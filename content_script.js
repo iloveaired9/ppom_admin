@@ -145,7 +145,8 @@ function scanAndHighlight() {
   clearHighlights();
   let count = 0;
   roots.forEach((info, el) => {
-    const name = extractTagName(el, info.type);
+    const dimensions = `${el.offsetWidth}x${el.offsetHeight}`;
+    const name = `${extractTagName(el, info.type)} (${dimensions})`;
     const adId = `${info.type}-${count++}-${Date.now()}`;
     highlightElement(el, name, info.type, adId);
   });

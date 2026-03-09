@@ -1,14 +1,37 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Connect to background for closure detection
+  const port = chrome.runtime.connect({ name: 'sidepanel' });
+  
   const toggle = document.getElementById('inspectorToggle');
   const statusBadge = document.getElementById('statusBadge');
   const totalAds = document.getElementById('totalAds');
   const googleAds = document.getElementById('googleAds');
   const otherAds = document.getElementById('otherAds');
 
-  // Load saved state
-  chrome.storage.local.get(['inspectorActive'], (result) => {
-    toggle.checked = !!result.inspectorActive;
-    updateStatusUI(toggle.checked);
+  // Auto-enable inspector on open
+  chrome.storage.local.set({ inspectorActive: true }, () => {
+    toggle.checked = true;
+    updateStatusUI(true);
+    
+    // Notify active tab to enable visualization
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { 
+          type: 'TOGGLE_INSPECTOR', 
+          active: true 
+        }).catch(err => console.log('Content script not ready or error:', err));
+      }
+    });
+
+    // Also notify other Ppomppu tabs for consistency
+    chrome.tabs.query({ url: "*://*.ppomppu.co.kr/*" }, (tabs) => {
+      tabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, { 
+          type: 'TOGGLE_INSPECTOR', 
+          active: true 
+        }).catch(() => {});
+      });
+    });
   });
 
   // Listen for changes from content script (detected ad counts)
