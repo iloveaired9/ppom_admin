@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 250px;
+      padding: 15px;
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      margin: 0;
+      background: #f8f9fa;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #dee2e6;
+      padding-bottom: 10px;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #343a40;
+    }
+    .status-badge {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 12px;
+      background: #e9ecef;
+      color: #6c757d;
+    }
+    .status-badge.active {
+      background: #d4edda;
+      color: #155724;
+    }
+    .switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 22px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+    .info-list {
+      margin-top: 15px;
+      font-size: 12px;
+      color: #495057;
+      list-style: none;
+      padding: 0;
+    }
+    .info-list li {
+      padding: 5px 0;
+      border-bottom: 1px dashed #e9ecef;
+    }
+    .info-list li:last-child {
+      border-bottom: none;
+    }
+    .count {
+      font-weight: bold;
+      color: #007bff;
+      float: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="title">Ppomppu Ad Admin</span>
+    <span id="statusBadge" class="status-badge">OFF</span>
+  </div>
+  
+  <div class="switch-container">
+    <span>광고 가시화</span>
+    <label class="switch">
+      <input type="checkbox" id="inspectorToggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <ul class="info-list" id="adList">
+    <li>검출된 광고: <span id="totalAds" class="count">0</span></li>
+    <li>Google Ads: <span id="googleAds" class="count">0</span></li>
+    <li>기타 광고: <span id="otherAds" class="count">0</span></li>
+  </ul>
+
+  <script src="popup.js"></script>
+</body>
+</html>

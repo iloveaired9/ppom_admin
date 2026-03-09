@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 100%;
+      height: 100vh;
+      padding: 20px;
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      margin: 0;
+      background: #f8f9fa;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      border-bottom: 2px solid #dee2e6;
+      padding-bottom: 15px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #343a40;
+    }
+    .status-badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 15px;
+      background: #e9ecef;
+      color: #6c757d;
+      font-weight: bold;
+    }
+    .status-badge.active {
+      background: #d4edda;
+      color: #155724;
+    }
+    .switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 26px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #4285f4;
+    }
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+    .info-card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .info-list {
+      font-size: 14px;
+      color: #495057;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .info-list li {
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f3f5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .info-list li:last-child {
+      border-bottom: none;
+    }
+    .label {
+      font-weight: 500;
+    }
+    .count {
+      font-weight: 700;
+      font-size: 16px;
+      color: #4285f4;
+    }
+    .count.red {
+      color: #ff4757;
+    }
+    .tag-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .tag-item {
+      padding: 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      margin-bottom: 5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
+      border: 1px solid transparent;
+      background: #f8f9fa;
+    }
+    .tag-item:hover {
+      background: #e9ecef;
+      border-color: #dee2e6;
+    }
+    .tag-type-icon {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .tag-type-google { background: #4285f4; }
+    .tag-type-other { background: #ff4757; }
+    
+    .tag-label {
+      flex-grow: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #495057;
+    }
+    .hint {
+      margin-top: 20px;
+      font-size: 12px;
+      color: #adb5bd;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="title">Ppomppu Ad Admin</span>
+    <span id="statusBadge" class="status-badge">OFF</span>
+  </div>
+  
+  <div class="switch-container">
+    <span style="font-weight: 600;">광고 가시화</span>
+    <label class="switch">
+      <input type="checkbox" id="inspectorToggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="info-card">
+    <ul class="info-list" id="adList">
+      <li><span class="label">총 광고 수</span> <span id="totalAds" class="count">0</span></li>
+      <li><span class="label">Google Ads</span> <span id="googleAds" class="count">0</span></li>
+      <li><span class="label">기타 광고 슬롯</span> <span id="otherAds" class="count red">0</span></li>
+    </ul>
+  </div>
+
+  <div class="info-card" style="margin-top: 20px; max-height: 400px; overflow-y: auto;">
+    <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; padding: 5px; color: #495057; border-bottom: 1px solid #eee;">감지된 태그 리스트</div>
+    <ul class="tag-list" id="adTagList">
+      <!-- Tag items will be injected here -->
+    </ul>
+  </div>
+
+  <div class="hint">
+    * 사이드바를 통해 뽐뿌의 광고 배치를 실시간으로 확인할 수 있습니다.<br>
+    * Google Ads는 <b>파란색</b>, 기타 광고는 <b>빨간색</b>으로 강조됩니다.
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

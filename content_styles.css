@@ -1,0 +1,4 @@
+/* content_styles.css is mostly handled in JS to avoid load order issues, but can have global resets if needed */
+.ppom-ad-highlight-container {
+    pointer-events: none !important;
+}
