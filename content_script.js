@@ -130,26 +130,24 @@ function scanAndHighlight() {
       curr = curr.parentElement;
     }
 
-    // Now determine the best type and name for this root
-    // If the highest root matches any site selector, prioritize 'other' type
+    // Initialize or update root info
     if (!roots.has(highest)) {
-      let type = item.type;
-      
-      // Re-verify type for the root
-      const isSiteSlot = otherAdSelectors.some(sel => highest.matches(sel));
-      type = isSiteSlot ? 'other' : 'google';
-      
-      const name = extractTagName(highest, type);
-      roots.set(highest, { type, name });
+      roots.set(highest, { type: item.type, name: '' });
+    }
+    
+    // If any element in this hierarchy is 'google', the whole root is 'google'
+    if (item.type === 'google') {
+      roots.get(highest).type = 'google';
     }
   });
 
-  // 3. Apply highlights
+  // 3. Finalize names and apply highlights
   clearHighlights();
   let count = 0;
   roots.forEach((info, el) => {
+    const name = extractTagName(el, info.type);
     const adId = `${info.type}-${count++}-${Date.now()}`;
-    highlightElement(el, info.name, info.type, adId);
+    highlightElement(el, name, info.type, adId);
   });
 
   sendStats();
