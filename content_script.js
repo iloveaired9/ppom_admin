@@ -88,6 +88,13 @@ style.innerHTML = `
   .ppom-ad-highlight.pulse {
     animation: ppom-pulse 1s ease-out;
   }
+  .http-link-highlight {
+    outline: 3px solid #ff4757 !important;
+    outline-offset: 2px !important;
+    background-color: rgba(255, 71, 87, 0.2) !important;
+    transition: all 0.3s ease;
+    z-index: 10000;
+  }
   @keyframes ppom-pulse {
     0% { transform: scale(1); outline-width: 3px; }
     50% { transform: scale(1.02); outline-width: 10px; outline-color: #fffa65 !important; }
@@ -104,7 +111,7 @@ chrome.storage.local.get(['inspectorActive'], (result) => {
   }
 });
 
-// Message listener
+// Primary Message Listener
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'TOGGLE_INSPECTOR') {
     inspectorActive = message.active;
@@ -113,6 +120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else {
       clearHighlights();
     }
+    sendStats();
   } else if (message.type === 'REQUEST_STATS') {
     sendStats();
   } else if (message.type === 'SCROLL_TO_AD') {
@@ -122,15 +130,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       el.classList.add('pulse');
       setTimeout(() => el.classList.remove('pulse'), 1000);
     }
+  } else if (message.action === 'scan_links') {
+    const links = scanForHttpLinks();
+    sendResponse({ links: links });
+  } else if (message.action === 'scroll_to_link') {
+    scrollToLink(message.index);
   }
 });
 
 function scanAndHighlight() {
   if (!inspectorActive) return;
 
-  // 1. Gather ALL ad elements
   const allAdElements = [];
-  
   const addTask = (el, type) => {
     if (el.offsetWidth > 10 && el.offsetHeight > 10) {
       allAdElements.push({ el, type });
@@ -140,27 +151,21 @@ function scanAndHighlight() {
   googleAdSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'google'));
   });
-
   kakaoAdSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'kakao'));
   });
-
   naverAdSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'naver'));
   });
-
   otherAdSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'other'));
   });
 
-  // 2. Identify "Roots" - outermost elements that are part of an ad
-  const roots = new Map(); // Element -> { type, name }
+  const roots = new Map();
   const elementsArray = allAdElements.map(o => o.el);
 
   allAdElements.forEach(item => {
     const el = item.el;
-    
-    // Find highest ancestor that is ALSO in allAdElements
     let highest = el;
     let curr = el.parentElement;
     while (curr && curr !== document.body) {
@@ -170,28 +175,20 @@ function scanAndHighlight() {
       curr = curr.parentElement;
     }
 
-    // Initialize or update root info
     if (!roots.has(highest)) {
-      roots.set(highest, { type: item.type, name: '' });
+      roots.set(highest, { type: item.type });
     }
     
-    // If any element in this hierarchy is 'google', the whole root is 'google'
-    if (item.type === 'google') {
-      roots.get(highest).type = 'google';
-    } else if (item.type === 'kakao' && roots.get(highest).type !== 'google') {
-      roots.get(highest).type = 'kakao';
-    } else if (item.type === 'naver' && !['google', 'kakao'].includes(roots.get(highest).type)) {
-      roots.get(highest).type = 'naver';
-    }
+    if (item.type === 'google') roots.get(highest).type = 'google';
+    else if (item.type === 'kakao' && roots.get(highest).type !== 'google') roots.get(highest).type = 'kakao';
+    else if (item.type === 'naver' && !['google', 'kakao'].includes(roots.get(highest).type)) roots.get(highest).type = 'naver';
 
-    // Way2G check - highest priority if pattern matches
     const label = extractTagName(highest, roots.get(highest).type);
     if (label.includes('/26225854,65120695/PPomppu/ppomppu.co.kr/')) {
       roots.get(highest).type = 'way2g';
     }
   });
 
-  // 3. Finalize names and apply highlights
   clearHighlights();
   let count = 0;
   roots.forEach((info, el) => {
@@ -210,7 +207,6 @@ function extractTagName(el, type) {
   const adClient = el.getAttribute('data-ad-client');
   const way2gPattern = '/26225854,65120695/PPomppu/ppomppu.co.kr/';
 
-  // 1. Check for GPT slot or Ad Client
   if (gptSlot) {
     if (gptSlot.includes(way2gPattern)) name = `Way2G (${gptSlot})`;
     else name = gptSlot;
@@ -218,7 +214,6 @@ function extractTagName(el, type) {
     name = `AdSense (${adClient})`;
   }
 
-  // 2. Check personal IDs, but filter out the technical google iframe IDs
   if (!name && el.id) {
     if (!el.id.includes('google_ads_iframe') && !el.id.includes('gpt_ad')) {
       name = el.id;
@@ -232,7 +227,6 @@ function extractTagName(el, type) {
     }
   }
 
-  // 3. Look for a better name in children (e.g. nested GPT slot info)
   if (!name) {
     const nestedGpt = el.querySelector('[data-gpt-slot]');
     if (nestedGpt) {
@@ -247,7 +241,6 @@ function extractTagName(el, type) {
     if (nestedIns) name = `AdSense Slot: ${nestedIns.getAttribute('data-ad-slot')}`;
   }
 
-  // 4. Check for Kakao AdFit
   if (!name && (type === 'kakao' || (el.tagName === 'IFRAME' && el.src.includes('kakao_ad')))) {
     const src = el.src || '';
     const match = src.match(/kakao_ad_(\d+x\d+)/);
@@ -255,7 +248,6 @@ function extractTagName(el, type) {
     name = `Kakao AdFit${sizeStr}`;
   }
 
-  // 5. Google Ad Wrapper (iframes with google_ad.html)
   if (!name && el.tagName === 'IFRAME' && el.src.includes('google_ad.html')) {
     const src = el.src || '';
     const posMatch = src.match(/pos=([^&]+)/);
@@ -263,21 +255,16 @@ function extractTagName(el, type) {
     name = `Google Ad Wrapper${posStr}`;
   }
 
-  // 6. Naver Powerlink
   if (!name && (type === 'naver' || (el.id && el.id.includes('powerlink')) || (el.className && typeof el.className === 'string' && el.className.includes('powerlink')))) {
     name = 'Naver Powerlink';
   }
 
-  // 7. Default fallback
   const fallbackName = type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
   const baseName = name || fallbackName;
 
-  // 8. Add Google Defined Sizes
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
-    if (definedSizes) {
-      return `${baseName} [GPT: ${definedSizes}]`;
-    }
+    if (definedSizes) return `${baseName} [GPT: ${definedSizes}]`;
   }
 
   return baseName;
@@ -285,9 +272,6 @@ function extractTagName(el, type) {
 
 function findGoogleDefinedSizes(el) {
   if (!el.id) return null;
-
-  // 1. Look for scripts in the entire document (most robust for GPT)
-  // Since defineSlot can be anywhere, we search scripts for the ID
   const scripts = document.querySelectorAll('script');
   for (const script of scripts) {
     const code = script.textContent;
@@ -300,17 +284,10 @@ function findGoogleDefinedSizes(el) {
 }
 
 function parseDefineSlot(code, targetId) {
-  // Regex to match: googletag.defineSlot('/path', [[size], [size]], 'targetId')
-  // We match the size part and verify the targetId
   const regex = /googletag\.defineSlot\s*\(\s*['"][^'"]+['"]\s*,\s*([[\]0-9\s,]+)\s*,\s*['"]([^'"]+)['"]\s*\)/g;
   let match;
   while ((match = regex.exec(code)) !== null) {
-    const sizePart = match[1].trim();
-    const slotId = match[2];
-    
-    if (slotId === targetId) {
-      return sizePart;
-    }
+    if (match[2] === targetId) return match[1].trim();
   }
   return null;
 }
@@ -318,15 +295,7 @@ function parseDefineSlot(code, targetId) {
 function highlightElement(el, label, type, adId) {
   el.classList.add('ppom-ad-highlight');
   el.setAttribute('data-ppom-ad-id', adId);
-  if (type === 'google') {
-    el.classList.add('ppom-ad-google');
-  } else if (type === 'kakao') {
-    el.classList.add('ppom-ad-kakao');
-  } else if (type === 'way2g') {
-    el.classList.add('ppom-ad-way2g');
-  } else if (type === 'naver') {
-    el.classList.add('ppom-ad-naver');
-  }
+  el.classList.add(`ppom-ad-${type === 'way2g' ? 'way2g' : type}`);
   el.setAttribute('data-ad-info', label);
 }
 
@@ -371,15 +340,72 @@ function sendStats() {
   }).catch(() => {});
 }
 
+// --- Abnormal Link Scanner Logic ---
+let foundLinks = [];
+
+function scanForHttpLinks() {
+  foundLinks = [];
+  const anchors = document.querySelectorAll('a[href]');
+  let logicalIndex = 0;
+  
+  anchors.forEach((a) => {
+    const href = a.getAttribute('href') || '';
+    const trimmedHref = href.trim();
+    
+    const isAbnormal = /^http:\/\//.test(trimmedHref) || 
+                       (/^http:[^\/]/.test(trimmedHref) && !/^https:/.test(trimmedHref));
+
+    if (isAbnormal) {
+      foundLinks.push({
+        index: logicalIndex++,
+        href: href,
+        text: a.innerText.trim() || a.textContent.trim() || '(텍스트 없음)',
+        element: a
+      });
+    }
+  });
+  
+  return foundLinks.map(l => ({ index: l.index, href: l.href, text: l.text }));
+}
+
+function scrollToLink(index) {
+  const linkObj = foundLinks[index];
+  if (linkObj && linkObj.element) {
+    const el = linkObj.element;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('http-link-highlight');
+    setTimeout(() => {
+      el.classList.remove('http-link-highlight');
+    }, 3000);
+  }
+}
+
 // Throttled scan
 let scanTimeout = null;
 function throttledScan() {
   if (scanTimeout) clearTimeout(scanTimeout);
-  scanTimeout = setTimeout(scanAndHighlight, 500);
+  scanTimeout = setTimeout(() => {
+    // Notify sidepanel that scan is starting
+    chrome.runtime.sendMessage({ action: 'scan_started' }).catch(() => {});
+    
+    // 1. Scan for Ads
+    chrome.storage.local.get(['inspectorActive'], (result) => {
+      if (result.inspectorActive) scanAndHighlight();
+    });
+    // 2. Scan for Links (if auto-scan enabled)
+    chrome.storage.local.get(['autoScanLinks'], (result) => {
+      if (result.autoScanLinks) {
+        const links = scanForHttpLinks();
+        chrome.runtime.sendMessage({ action: 'links_detected', links: links }).catch(() => {});
+      }
+    });
+  }, 500);
 }
 
-const observer = new MutationObserver((mutations) => {
-  if (inspectorActive) throttledScan();
-});
+// Initialization and Observation
+// Trigger scan as soon as possible and on multiple events to ensure coverage
+throttledScan();
+window.addEventListener('load', throttledScan);
 
+const observer = new MutationObserver(throttledScan);
 observer.observe(document.body, { childList: true, subtree: true });
