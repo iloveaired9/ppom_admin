@@ -149,6 +149,9 @@
       flex-shrink: 0;
     }
     .tag-type-google { background: #4285f4; }
+    .tag-type-kakao { background: #ffcc00; }
+    .tag-type-way2g { background: #a55eea; }
+    .tag-type-naver { background: #2db400; }
     .tag-type-other { background: #ff4757; }
     
     .tag-label {
@@ -184,6 +187,9 @@
     <ul class="info-list" id="adList">
       <li><span class="label">총 광고 수</span> <span id="totalAds" class="count">0</span></li>
       <li><span class="label">Google Ads</span> <span id="googleAds" class="count">0</span></li>
+      <li><span class="label">Kakao Ads</span> <span id="kakaoAds" class="count" style="color: #f7b731;">0</span></li>
+      <li><span class="label">Way2G Ads</span> <span id="way2gAds" class="count" style="color: #a55eea;">0</span></li>
+      <li><span class="label">Naver Ads</span> <span id="naverAds" class="count" style="color: #2db400;">0</span></li>
       <li><span class="label">기타 광고 슬롯</span> <span id="otherAds" class="count red">0</span></li>
     </ul>
   </div>
@@ -197,7 +203,7 @@
 
   <div class="hint">
     * 사이드바를 통해 뽐뿌의 광고 배치를 실시간으로 확인할 수 있습니다.<br>
-    * Google Ads는 <b>파란색</b>, 기타 광고는 <b>빨간색</b>으로 강조됩니다.
+    * Google Ads는 <b style="color: #4285f4;">파란색</b>, Kakao Ads는 <b style="color: #f7b731;">노란색</b>, Way2G Ads는 <b style="color: #a55eea;">보라색</b>, Naver Ads는 <b style="color: #2db400;">초록색</b>, 기타 광고는 <b style="color: #ff4757;">빨간색</b>으로 강조됩니다.
   </div>
 
   <script src="sidepanel.js"></script>

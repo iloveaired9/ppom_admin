@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusBadge = document.getElementById('statusBadge');
   const totalAds = document.getElementById('totalAds');
   const googleAds = document.getElementById('googleAds');
+  const kakaoAds = document.getElementById('kakaoAds');
+  const way2gAds = document.getElementById('way2gAds');
+  const naverAds = document.getElementById('naverAds');
   const otherAds = document.getElementById('otherAds');
 
   // Auto-enable inspector on open
@@ -40,6 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (message.type === 'AD_STATS') {
       if (totalAds) totalAds.textContent = message.total || 0;
       if (googleAds) googleAds.textContent = message.google || 0;
+      if (kakaoAds) kakaoAds.textContent = message.kakao || 0;
+      if (way2gAds) way2gAds.textContent = message.way2g || 0;
+      if (naverAds) naverAds.textContent = message.naver || 0;
       if (otherAds) otherAds.textContent = message.other || 0;
       renderTagList(message.ads || []);
     }

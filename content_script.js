@@ -7,7 +7,20 @@ const googleAdSelectors = [
   'ins[data-ad-client]',
   'div[data-gpt-slot]',
   'div[id^="google_ads_iframe"]',
-  'div[id^="gpt_ad"]'
+  'div[id^="gpt_ad"]',
+  'iframe[src*="google_ad.html"]'
+];
+
+const kakaoAdSelectors = [
+  'iframe[src*="kakao_ad"]',
+  'iframe[src*=".ppomppu.co.kr/banner/kakao_ad"]'
+];
+
+const naverAdSelectors = [
+  'div[id*="powerlink"]',
+  'div[class*="powerlink"]',
+  '[id*="powerlink"]',
+  '[class*="powerlink"]'
 ];
 
 const otherAdSelectors = [
@@ -52,6 +65,25 @@ style.innerHTML = `
   }
   .ppom-ad-google::after {
     background: rgba(66, 133, 244, 0.9);
+  }
+  .ppom-ad-kakao {
+    outline-color: #ffcc00 !important;
+  }
+  .ppom-ad-kakao::after {
+    background: rgba(255, 204, 0, 0.9);
+    color: #333;
+  }
+  .ppom-ad-way2g {
+    outline-color: #a55eea !important;
+  }
+  .ppom-ad-way2g::after {
+    background: rgba(165, 94, 234, 0.9);
+  }
+  .ppom-ad-naver {
+    outline-color: #2db400 !important;
+  }
+  .ppom-ad-naver::after {
+    background: rgba(45, 180, 0, 0.9);
   }
   .ppom-ad-highlight.pulse {
     animation: ppom-pulse 1s ease-out;
@@ -109,6 +141,14 @@ function scanAndHighlight() {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'google'));
   });
 
+  kakaoAdSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => addTask(el, 'kakao'));
+  });
+
+  naverAdSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => addTask(el, 'naver'));
+  });
+
   otherAdSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => addTask(el, 'other'));
   });
@@ -138,6 +178,16 @@ function scanAndHighlight() {
     // If any element in this hierarchy is 'google', the whole root is 'google'
     if (item.type === 'google') {
       roots.get(highest).type = 'google';
+    } else if (item.type === 'kakao' && roots.get(highest).type !== 'google') {
+      roots.get(highest).type = 'kakao';
+    } else if (item.type === 'naver' && !['google', 'kakao'].includes(roots.get(highest).type)) {
+      roots.get(highest).type = 'naver';
+    }
+
+    // Way2G check - highest priority if pattern matches
+    const label = extractTagName(highest, roots.get(highest).type);
+    if (label.includes('/26225854,65120695/PPomppu/ppomppu.co.kr/')) {
+      roots.get(highest).type = 'way2g';
     }
   });
 
@@ -162,44 +212,81 @@ function extractTagName(el, type) {
   const adClient = el.getAttribute('data-ad-client');
   if (adClient) return `AdSense (${adClient})`;
 
+  // Way2G Pattern Check
+  const way2gPattern = '/26225854,65120695/PPomppu/ppomppu.co.kr/';
+  if (gptSlot && gptSlot.includes(way2gPattern)) return `Way2G (${gptSlot})`;
+
   // 2. Check personal IDs, but filter out the technical google iframe IDs
   if (el.id) {
     if (!el.id.includes('google_ads_iframe') && !el.id.includes('gpt_ad')) {
       return el.id;
     }
     
-    // If it DOES contain google_ads_iframe, try to extract the slot name from it
-    // Example: google_ads_iframe_/26225854,65120695/PPomppu/..._0
+    // If any element in this hierarchy is 'google', the whole root is 'google'
     if (el.id.includes('google_ads_iframe_/')) {
       const parts = el.id.split('google_ads_iframe_');
       if (parts.length > 1) {
-        // Strip the trailing index like _0
-        return parts[1].replace(/_\d+$/, '');
+        const slotName = parts[1].replace(/_\d+$/, '');
+        if (slotName.includes('/26225854,65120695/PPomppu/ppomppu.co.kr/')) return `Way2G (${slotName})`;
+        return slotName;
       }
     }
   }
 
   // 3. Look for a better name in children (e.g. nested GPT slot info)
   const nestedGpt = el.querySelector('[data-gpt-slot]');
-  if (nestedGpt) return nestedGpt.getAttribute('data-gpt-slot');
+  if (nestedGpt) {
+    const slot = nestedGpt.getAttribute('data-gpt-slot');
+    if (slot.includes(way2gPattern)) return `Way2G (${slot})`;
+    return slot;
+  }
 
   const nestedIns = el.querySelector('ins[data-ad-slot]');
   if (nestedIns) return `AdSense Slot: ${nestedIns.getAttribute('data-ad-slot')}`;
 
-  // 4. Default fallback
+  // 4. Check for Kakao AdFit
+  if (type === 'kakao' || (el.tagName === 'IFRAME' && el.src.includes('kakao_ad'))) {
+    const src = el.src || '';
+    const match = src.match(/kakao_ad_(\d+x\d+)/);
+    const sizeStr = match ? ` ${match[1]}` : '';
+    return `Kakao AdFit${sizeStr}`;
+  }
+
+  // 5. Google Ad Wrapper (iframes with google_ad.html)
+  if (el.tagName === 'IFRAME' && el.src.includes('google_ad.html')) {
+    const src = el.src || '';
+    const posMatch = src.match(/pos=([^&]+)/);
+    const posStr = posMatch ? ` (pos: ${posMatch[1]})` : '';
+    return `Google Ad Wrapper${posStr}`;
+  }
+
+  // 6. Naver Powerlink
+  if (type === 'naver' || (el.id && el.id.includes('powerlink')) || (el.className && typeof el.className === 'string' && el.className.includes('powerlink'))) {
+    return 'Naver Powerlink';
+  }
+
+  // 7. Default fallback
   return type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
 }
 
 function highlightElement(el, label, type, adId) {
   el.classList.add('ppom-ad-highlight');
   el.setAttribute('data-ppom-ad-id', adId);
-  if (type === 'google') el.classList.add('ppom-ad-google');
+  if (type === 'google') {
+    el.classList.add('ppom-ad-google');
+  } else if (type === 'kakao') {
+    el.classList.add('ppom-ad-kakao');
+  } else if (type === 'way2g') {
+    el.classList.add('ppom-ad-way2g');
+  } else if (type === 'naver') {
+    el.classList.add('ppom-ad-naver');
+  }
   el.setAttribute('data-ad-info', label);
 }
 
 function clearHighlights() {
   document.querySelectorAll('.ppom-ad-highlight').forEach(el => {
-    el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'pulse');
+    el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver', 'pulse');
     el.removeAttribute('data-ad-info');
     el.removeAttribute('data-ppom-ad-id');
   });
@@ -213,10 +300,16 @@ function sendStats() {
   
   const adDetails = [];
   document.querySelectorAll('.ppom-ad-highlight').forEach(el => {
+    let type = 'other';
+    if (el.classList.contains('ppom-ad-google')) type = 'google';
+    else if (el.classList.contains('ppom-ad-kakao')) type = 'kakao';
+    else if (el.classList.contains('ppom-ad-way2g')) type = 'way2g';
+    else if (el.classList.contains('ppom-ad-naver')) type = 'naver';
+
     adDetails.push({
       id: el.getAttribute('data-ppom-ad-id'),
       label: el.getAttribute('data-ad-info'),
-      type: el.classList.contains('ppom-ad-google') ? 'google' : 'other'
+      type: type
     });
   });
 
@@ -224,6 +317,9 @@ function sendStats() {
     type: 'AD_STATS',
     total: adDetails.length,
     google: adDetails.filter(a => a.type === 'google').length,
+    kakao: adDetails.filter(a => a.type === 'kakao').length,
+    way2g: adDetails.filter(a => a.type === 'way2g').length,
+    naver: adDetails.filter(a => a.type === 'naver').length,
     other: adDetails.filter(a => a.type === 'other').length,
     ads: adDetails
   }).catch(() => {});
