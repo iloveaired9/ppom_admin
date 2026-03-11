@@ -205,68 +205,114 @@ function scanAndHighlight() {
 }
 
 function extractTagName(el, type) {
-  // 1. Check for GPT slot or Ad Client
+  let name = "";
   const gptSlot = el.getAttribute('data-gpt-slot');
-  if (gptSlot) return gptSlot;
-  
   const adClient = el.getAttribute('data-ad-client');
-  if (adClient) return `AdSense (${adClient})`;
-
-  // Way2G Pattern Check
   const way2gPattern = '/26225854,65120695/PPomppu/ppomppu.co.kr/';
-  if (gptSlot && gptSlot.includes(way2gPattern)) return `Way2G (${gptSlot})`;
+
+  // 1. Check for GPT slot or Ad Client
+  if (gptSlot) {
+    if (gptSlot.includes(way2gPattern)) name = `Way2G (${gptSlot})`;
+    else name = gptSlot;
+  } else if (adClient) {
+    name = `AdSense (${adClient})`;
+  }
 
   // 2. Check personal IDs, but filter out the technical google iframe IDs
-  if (el.id) {
+  if (!name && el.id) {
     if (!el.id.includes('google_ads_iframe') && !el.id.includes('gpt_ad')) {
-      return el.id;
-    }
-    
-    // If any element in this hierarchy is 'google', the whole root is 'google'
-    if (el.id.includes('google_ads_iframe_/')) {
+      name = el.id;
+    } else if (el.id.includes('google_ads_iframe_/')) {
       const parts = el.id.split('google_ads_iframe_');
       if (parts.length > 1) {
         const slotName = parts[1].replace(/_\d+$/, '');
-        if (slotName.includes('/26225854,65120695/PPomppu/ppomppu.co.kr/')) return `Way2G (${slotName})`;
-        return slotName;
+        if (slotName.includes(way2gPattern)) name = `Way2G (${slotName})`;
+        else name = slotName;
       }
     }
   }
 
   // 3. Look for a better name in children (e.g. nested GPT slot info)
-  const nestedGpt = el.querySelector('[data-gpt-slot]');
-  if (nestedGpt) {
-    const slot = nestedGpt.getAttribute('data-gpt-slot');
-    if (slot.includes(way2gPattern)) return `Way2G (${slot})`;
-    return slot;
+  if (!name) {
+    const nestedGpt = el.querySelector('[data-gpt-slot]');
+    if (nestedGpt) {
+      const slot = nestedGpt.getAttribute('data-gpt-slot');
+      if (slot.includes(way2gPattern)) name = `Way2G (${slot})`;
+      else name = slot;
+    }
   }
 
-  const nestedIns = el.querySelector('ins[data-ad-slot]');
-  if (nestedIns) return `AdSense Slot: ${nestedIns.getAttribute('data-ad-slot')}`;
+  if (!name) {
+    const nestedIns = el.querySelector('ins[data-ad-slot]');
+    if (nestedIns) name = `AdSense Slot: ${nestedIns.getAttribute('data-ad-slot')}`;
+  }
 
   // 4. Check for Kakao AdFit
-  if (type === 'kakao' || (el.tagName === 'IFRAME' && el.src.includes('kakao_ad'))) {
+  if (!name && (type === 'kakao' || (el.tagName === 'IFRAME' && el.src.includes('kakao_ad')))) {
     const src = el.src || '';
     const match = src.match(/kakao_ad_(\d+x\d+)/);
     const sizeStr = match ? ` ${match[1]}` : '';
-    return `Kakao AdFit${sizeStr}`;
+    name = `Kakao AdFit${sizeStr}`;
   }
 
   // 5. Google Ad Wrapper (iframes with google_ad.html)
-  if (el.tagName === 'IFRAME' && el.src.includes('google_ad.html')) {
+  if (!name && el.tagName === 'IFRAME' && el.src.includes('google_ad.html')) {
     const src = el.src || '';
     const posMatch = src.match(/pos=([^&]+)/);
     const posStr = posMatch ? ` (pos: ${posMatch[1]})` : '';
-    return `Google Ad Wrapper${posStr}`;
+    name = `Google Ad Wrapper${posStr}`;
   }
 
   // 6. Naver Powerlink
-  if (type === 'naver' || (el.id && el.id.includes('powerlink')) || (el.className && typeof el.className === 'string' && el.className.includes('powerlink'))) {
-    return 'Naver Powerlink';
+  if (!name && (type === 'naver' || (el.id && el.id.includes('powerlink')) || (el.className && typeof el.className === 'string' && el.className.includes('powerlink')))) {
+    name = 'Naver Powerlink';
   }
 
   // 7. Default fallback
-  return type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
+  const fallbackName = type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
+  const baseName = name || fallbackName;
+
+  // 8. Add Google Defined Sizes
+  if (type === 'google' || type === 'way2g') {
+    const definedSizes = findGoogleDefinedSizes(el);
+    if (definedSizes) {
+      return `${baseName} [GPT: ${definedSizes}]`;
+    }
+  }
+
+  return baseName;
+}
+
+function findGoogleDefinedSizes(el) {
+  if (!el.id) return null;
+
+  // 1. Look for scripts in the entire document (most robust for GPT)
+  // Since defineSlot can be anywhere, we search scripts for the ID
+  const scripts = document.querySelectorAll('script');
+  for (const script of scripts) {
+    const code = script.textContent;
+    if (code.includes('googletag.defineSlot') && code.includes(el.id)) {
+      const size = parseDefineSlot(code, el.id);
+      if (size) return size;
+    }
+  }
+  return null;
+}
+
+function parseDefineSlot(code, targetId) {
+  // Regex to match: googletag.defineSlot('/path', [[size], [size]], 'targetId')
+  // We match the size part and verify the targetId
+  const regex = /googletag\.defineSlot\s*\(\s*['"][^'"]+['"]\s*,\s*([[\]0-9\s,]+)\s*,\s*['"]([^'"]+)['"]\s*\)/g;
+  let match;
+  while ((match = regex.exec(code)) !== null) {
+    const sizePart = match[1].trim();
+    const slotId = match[2];
+    
+    if (slotId === targetId) {
+      return sizePart;
+    }
+  }
+  return null;
 }
 
 function highlightElement(el, label, type, adId) {
