@@ -1,312 +1,303 @@
-document.addEventListener('DOMContentLoaded', () => {
-  // Connect to background for closure detection
-  const port = chrome.runtime.connect({ name: 'sidepanel' });
+document.addEventListener('DOMContentLoaded', async () => {
+  console.log('Sidepanel loaded');
   
-  const toggle = document.getElementById('inspectorToggle');
-  const statusBadge = document.getElementById('statusBadge');
-  const totalAds = document.getElementById('totalAds');
-  const googleAds = document.getElementById('googleAds');
-  const kakaoAds = document.getElementById('kakaoAds');
-  const way2gAds = document.getElementById('way2gAds');
-  const naverAds = document.getElementById('naverAds');
-  const otherAds = document.getElementById('otherAds');
+  // 1. DOM Elements
+  const elements = {
+    toggle: document.getElementById('inspectorToggle'),
+    statusBadge: document.getElementById('statusBadge'),
+    totalAds: document.getElementById('totalAds'),
+    googleAds: document.getElementById('googleAds'),
+    kakaoAds: document.getElementById('kakaoAds'),
+    way2gAds: document.getElementById('way2gAds'),
+    naverAds: document.getElementById('naverAds'),
+    otherAds: document.getElementById('otherAds'),
+    tabs: document.querySelectorAll('.tab'),
+    tabContents: document.querySelectorAll('.tab-content'),
+    defaultTabSelect: document.getElementById('defaultTabSelect'),
+    adTagList: document.getElementById('adTagList'),
+    linkCount: document.getElementById('linkCount'),
+    linkList: document.getElementById('linkList'),
+    linkListBox: document.getElementById('linkListBox'),
+    linkEmptyState: document.getElementById('linkEmptyState'),
+    linkScanningState: document.getElementById('linkScanningState'),
+    scanLinksBtn: document.getElementById('scanLinksBtn'),
+    autoScanLinksToggle: document.getElementById('autoScanLinksToggle'),
+    refreshPpomBtn: document.getElementById('refreshPpomBtn'),
+    ppomLinkCount: document.getElementById('ppomLinkCount'),
+    ppomLinkList: document.getElementById('ppomLinkList'),
+    ppomEmptyState: document.getElementById('ppomEmptyState')
+  };
 
-  // Tab Switching
-  const tabs = document.querySelectorAll('.tab');
-  const tabContents = document.querySelectorAll('.tab-content');
+  // Connect to background
+  const port = chrome.runtime.connect({ name: 'sidepanel' });
 
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const prevTab = document.querySelector('.tab.active').getAttribute('data-tab');
-      const target = tab.getAttribute('data-tab');
-      
-      if (prevTab === target) return;
+  // --- Utility Functions ---
+  async function getActiveTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tab;
+    } catch (e) {
+      console.error('Failed to get active tab:', e);
+      return null;
+    }
+  }
 
-      // Update Tab UI
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      
-      // Update Content UI
-      tabContents.forEach(content => {
-        content.classList.remove('active');
-        if (content.id === target) {
-          content.classList.add('active');
-        }
+  async function sendMessageToActiveTab(message) {
+    const tab = await getActiveTab();
+    if (tab && tab.id) {
+      return chrome.tabs.sendMessage(tab.id, message).catch(err => {
+        console.warn('Message failed or content script not ready:', err);
       });
+    }
+  }
 
-      // Disable features from the previous tab
-      if (prevTab === 'tab-ads' && target !== 'tab-ads') {
-        // Switching away from Ads, turn off inspector
-        setInspectorActive(false);
-      } else if (prevTab === 'tab-links' && target !== 'tab-links') {
-        // Switching away from Links, clear highlights if any
-        sendMessageToActiveTab({ action: 'removePpomHighlight', index: -1 });
-      }
+  function updateStatusUI(isActive, isPpomppu = true) {
+    if (!elements.statusBadge) return;
+    
+    if (!isPpomppu) {
+      elements.statusBadge.textContent = 'N/A';
+      elements.statusBadge.classList.remove('active');
+      return;
+    }
 
-      // Special handling for Ppom Link tab activation
-      if (target === 'tab-links') {
-        sendMessageToActiveTab({ action: 'requestPpomLinks' });
-      }
+    if (isActive) {
+      elements.statusBadge.textContent = 'ON';
+      elements.statusBadge.classList.add('active');
+    } else {
+      elements.statusBadge.textContent = 'OFF';
+      elements.statusBadge.classList.remove('active');
+    }
+  }
+
+  function setInspectorActive(active) {
+    console.log('Setting inspector active:', active);
+    chrome.storage.local.set({ inspectorActive: active }, () => {
+      if (elements.toggle) elements.toggle.checked = active;
+      updateStatusUI(active);
+      sendMessageToActiveTab({ type: 'TOGGLE_INSPECTOR', active: active });
     });
-  });
+  }
 
   function switchTab(targetId) {
     const tabBtn = document.querySelector(`.tab[data-tab="${targetId}"]`);
     if (tabBtn) tabBtn.click();
   }
 
-  function setInspectorActive(active) {
-    chrome.storage.local.set({ inspectorActive: active }, () => {
-      if (toggle) toggle.checked = active;
-      updateStatusUI(active);
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, { 
-            type: 'TOGGLE_INSPECTOR', 
-            active: active 
-          }).catch(() => {});
-        }
+  // --- Tab Logic ---
+  elements.tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const activeTabEl = document.querySelector('.tab.active');
+      const prevTab = activeTabEl ? activeTabEl.getAttribute('data-tab') : null;
+      const target = tab.getAttribute('data-tab');
+      
+      if (prevTab === target) return;
+
+      // Update UI
+      elements.tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      elements.tabContents.forEach(content => {
+        content.classList.toggle('active', content.id === target);
       });
+
+      // Feature specific logic
+      handleTabChange(prevTab, target);
     });
-  }
+  });
 
-  // --- Link Scanner Logic ---
-  const scanLinksBtn = document.getElementById('scanLinksBtn');
-  const autoScanLinksToggle = document.getElementById('autoScanLinksToggle');
-  const linkCount = document.getElementById('linkCount');
-  const linkList = document.getElementById('linkList');
-  const linkListBox = document.getElementById('linkListBox');
-  const linkEmptyState = document.getElementById('linkEmptyState');
-  const linkScanningState = document.getElementById('linkScanningState');
+  async function handleTabChange(prevTab, target) {
+    console.log('Tab changed from', prevTab, 'to', target);
+    
+    const tab = await getActiveTab();
+    const isPpom = tab && tab.url && tab.url.includes('ppomppu.co.kr');
 
-  // Load Auto Scan setting
-  chrome.storage.local.get(['autoScanLinks'], (result) => {
-    autoScanLinksToggle.checked = !!result.autoScanLinks;
-    updateScanBtnVisibility(autoScanLinksToggle.checked);
-    if (autoScanLinksToggle.checked) {
-      requestLinkScan();
+    if (target === 'tab-ads' && isPpom) {
+      setInspectorActive(true);
+    } else if (prevTab === 'tab-ads' && target !== 'tab-ads') {
+      setInspectorActive(false);
     }
-  });
 
-  autoScanLinksToggle.addEventListener('change', () => {
-    const isAuto = autoScanLinksToggle.checked;
-    chrome.storage.local.set({ autoScanLinks: isAuto });
-    updateScanBtnVisibility(isAuto);
-    if (isAuto) {
-      requestLinkScan();
+    if (target === 'tab-links' && isPpom) {
+      chrome.storage.local.get(['autoScanLinks'], (res) => {
+        if (res.autoScanLinks) requestLinkScan();
+      });
     }
-  });
 
-  scanLinksBtn.addEventListener('click', () => {
-    requestLinkScan();
-  });
-
-  function updateScanBtnVisibility(isAuto) {
-    scanLinksBtn.style.display = isAuto ? 'none' : 'block';
+    if (target === 'tab-ppom' && isPpom) {
+      sendMessageToActiveTab({ action: 'request_ppom_links' });
+    }
   }
 
-  function showLinkScanningState() {
-    if (linkScanningState) linkScanningState.style.display = 'flex';
-    if (linkListBox) linkListBox.style.display = 'none';
-    if (linkEmptyState) linkEmptyState.style.display = 'none';
+  // --- Sync Logic ---
+  let isSyncing = false;
+  async function sync() {
+    if (isSyncing) return;
+    isSyncing = true;
+    
+    try {
+      console.log('Syncing sidepanel with active tab...');
+      const tab = await getActiveTab();
+      const isPpom = tab && tab.url && tab.url.includes('ppomppu.co.kr');
+      
+      if (!isPpom) {
+        console.log('Not a Ppomppu page');
+        if (elements.toggle) elements.toggle.disabled = true;
+        updateStatusUI(false, false);
+        return;
+      }
+
+      console.log('Ppomppu page detected');
+      if (elements.toggle) elements.toggle.disabled = false;
+
+      chrome.storage.local.get(['defaultTab', 'inspectorActive', 'autoScanLinks'], (res) => {
+        const activeTabEl = document.querySelector('.tab.active');
+        const activeTabId = activeTabEl ? activeTabEl.getAttribute('data-tab') : 'tab-ads';
+
+        if (!window.hasInitialized) {
+          window.hasInitialized = true;
+          const startTab = res.defaultTab || 'tab-ads';
+          console.log('First init, switching to:', startTab);
+          switchTab(startTab);
+          if (startTab === 'tab-ads') {
+            setInspectorActive(true);
+          }
+        } else {
+          // If already initialized but we switched BACK to a Ppomppu page
+          if (activeTabId === 'tab-ads') {
+            console.log('Enforcing ON for Ads tab');
+            setInspectorActive(true);
+          }
+        }
+        
+        sendMessageToActiveTab({ type: 'REQUEST_STATS' });
+      });
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      isSyncing = false;
+    }
   }
 
-  let lastScanStartTime = 0;
-  const MIN_SCAN_TIME = 1000;
+  // Listeners
+  chrome.tabs.onActivated.addListener(() => sync());
+  chrome.tabs.onUpdated.addListener((id, change, tab) => {
+    if (change.status === 'complete' && tab.active) sync();
+  });
+
+  // --- Link Scan Logic ---
+  const MIN_SCAN_TIME = 800;
+  let lastScanStart = 0;
 
   function requestLinkScan() {
-    lastScanStartTime = Date.now();
-    showLinkScanningState();
-    sendMessageToActiveTab({ action: 'scan_links' }).then(response => {
-      const elapsed = Date.now() - lastScanStartTime;
-      const remaining = Math.max(0, MIN_SCAN_TIME - elapsed);
-      
+    lastScanStart = Date.now();
+    if (elements.linkScanningState) elements.linkScanningState.style.display = 'flex';
+    if (elements.linkListBox) elements.linkListBox.style.display = 'none';
+    if (elements.linkEmptyState) elements.linkEmptyState.style.display = 'none';
+    
+    sendMessageToActiveTab({ action: 'scan_links' }).then(res => {
+      const delay = Math.max(0, MIN_SCAN_TIME - (Date.now() - lastScanStart));
       setTimeout(() => {
-        if (response && response.links) {
-          updateLinkUI(response.links);
-        } else {
-          updateLinkUI([]);
-        }
-      }, remaining);
+        updateLinkUI(res?.links || []);
+      }, delay);
     });
   }
 
   function updateLinkUI(links) {
-    if (linkScanningState) linkScanningState.style.display = 'none';
-    if (linkCount) linkCount.textContent = links.length;
-    if (linkList) {
-      linkList.innerHTML = '';
+    if (elements.linkScanningState) elements.linkScanningState.style.display = 'none';
+    if (elements.linkCount) elements.linkCount.textContent = links.length;
+    if (elements.linkList) {
+      elements.linkList.innerHTML = '';
       if (links.length > 0) {
-        if (linkListBox) linkListBox.style.display = 'block';
-        if (linkEmptyState) linkEmptyState.style.display = 'none';
-        
-        links.forEach(link => {
+        if (elements.linkListBox) elements.linkListBox.style.display = 'block';
+        links.forEach(l => {
           const li = document.createElement('li');
           li.className = 'tag-item';
           li.style.cursor = 'pointer';
-          li.innerHTML = `
-            <span class="tag-type-icon" style="background: #ff4757;"></span>
-            <span class="tag-label" style="font-size: 11px;">${link.text}</span>
-            <span style="font-size: 10px; color: #adb5bd; margin-left: auto;">${link.href.substring(0, 20)}...</span>
-          `;
-          li.addEventListener('click', () => {
-            sendMessageToActiveTab({ action: 'scroll_to_link', index: link.index });
-          });
-          linkList.appendChild(li);
+          li.innerHTML = `<span class="tag-type-icon" style="background:#ff4757;"></span><span class="tag-label">${l.text}</span>`;
+          li.onclick = () => sendMessageToActiveTab({ action: 'scroll_to_link', index: l.index });
+          elements.linkList.appendChild(li);
         });
-      } else {
-        if (linkListBox) linkListBox.style.display = 'none';
-        if (linkEmptyState) linkEmptyState.style.display = 'block';
+      } else if (elements.linkEmptyState) {
+        elements.linkEmptyState.style.display = 'block';
       }
     }
   }
 
-  // Settings Logic
-  const defaultTabSelect = document.getElementById('defaultTabSelect');
-  chrome.storage.local.get(['defaultTab'], (result) => {
-    if (result.defaultTab) {
-      defaultTabSelect.value = result.defaultTab;
-      // If it's not the default tab, switch to it
-      if (result.defaultTab !== 'tab-ads') {
-        switchTab(result.defaultTab);
-      }
-    }
-  });
-
-  defaultTabSelect.addEventListener('change', () => {
-    chrome.storage.local.set({ defaultTab: defaultTabSelect.value });
-  });
-
-  async function sendMessageToActiveTab(message) {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id) {
-      return chrome.tabs.sendMessage(tab.id, message).catch(() => {});
-    }
+  // --- Event Bindings ---
+  if (elements.toggle) {
+    elements.toggle.addEventListener('change', () => setInspectorActive(elements.toggle.checked));
+  }
+  if (elements.scanLinksBtn) {
+    elements.scanLinksBtn.onclick = requestLinkScan;
+  }
+  if (elements.autoScanLinksToggle) {
+    elements.autoScanLinksToggle.onchange = () => chrome.storage.local.set({ autoScanLinks: elements.autoScanLinksToggle.checked });
+  }
+  if (elements.defaultTabSelect) {
+    elements.defaultTabSelect.onchange = () => chrome.storage.local.set({ defaultTab: elements.defaultTabSelect.value });
+  }
+  if (elements.refreshPpomBtn) {
+    elements.refreshPpomBtn.onclick = () => sendMessageToActiveTab({ action: 'request_ppom_links' });
   }
 
-  // Auto-enable inspector on open (only if on ads tab)
-  chrome.storage.local.get(['inspectorActive'], (result) => {
-    const activeTabId = document.querySelector('.tab.active').getAttribute('data-tab');
-    if (activeTabId === 'tab-ads') {
-      setInspectorActive(true);
-    }
-  });
-
-  // Also request initial states anyway to be safe
-  setTimeout(() => {
-    // Check if the links tab is active and auto-scan is enabled
-    const activeTabId = document.querySelector('.tab.active').getAttribute('data-tab');
-    if (activeTabId === 'tab-links') {
-      chrome.storage.local.get(['autoScanLinks'], (result) => {
-        if (result.autoScanLinks) {
-          requestLinkScan();
-        }
-      });
-    }
-    sendMessageToActiveTab({ type: 'REQUEST_STATS' });
-  }, 500);
-
-  // Listen for changes from content script (detected ad counts)
-  chrome.runtime.onMessage.addListener((message) => {
-    console.log('Received message in sidepanel:', message);
-    if (message.type === 'AD_STATS') {
-      if (totalAds) totalAds.textContent = message.total || 0;
-      if (googleAds) googleAds.textContent = message.google || 0;
-      if (kakaoAds) kakaoAds.textContent = message.kakao || 0;
-      if (way2gAds) way2gAds.textContent = message.way2g || 0;
-      if (naverAds) naverAds.textContent = message.naver || 0;
-      if (otherAds) otherAds.textContent = message.other || 0;
-      renderTagList(message.ads || []);
-    } else if (message.action === 'scan_started') {
-      lastScanStartTime = Date.now();
-      showLinkScanningState();
-    } else if (message.action === 'links_detected') {
-      const elapsed = Date.now() - lastScanStartTime;
-      const remaining = Math.max(0, MIN_SCAN_TIME - elapsed);
-      setTimeout(() => {
-        updateLinkUI(message.links || []);
-      }, remaining);
-    }
-  });
-
-  // Listen for tab updates/navigation to ensure sync on page load
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.active) {
-      chrome.storage.local.get(['autoScanLinks'], (result) => {
-        const activeTabEl = document.querySelector('.tab.active');
-        const activeTabId = activeTabEl ? activeTabEl.getAttribute('data-tab') : null;
-        if (result.autoScanLinks && activeTabId === 'tab-links') {
-          requestLinkScan();
-        }
-      });
+  // --- Message Listener ---
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'AD_STATS') {
+      if (elements.totalAds) elements.totalAds.textContent = msg.total || 0;
+      if (elements.googleAds) elements.googleAds.textContent = msg.google || 0;
+      if (elements.kakaoAds) elements.kakaoAds.textContent = msg.kakao || 0;
+      if (elements.way2gAds) elements.way2gAds.textContent = msg.way2g || 0;
+      if (elements.naverAds) elements.naverAds.textContent = msg.naver || 0;
+      if (elements.otherAds) elements.otherAds.textContent = msg.other || 0;
+      renderTagList(msg.ads || []);
+    } else if (msg.action === 'ppom_links_detected') {
+      updatePpomUI(msg.links || []);
     }
   });
 
   function renderTagList(ads) {
-    const list = document.getElementById('adTagList');
-    if (!list) return;
-    
-    list.innerHTML = '';
-    
-    if (ads.length === 0) {
-      list.innerHTML = '<div style="font-size: 11px; color: #adb5bd; padding: 10px; text-align: center;">감지된 태그가 없습니다.</div>';
-      return;
-    }
-
+    if (!elements.adTagList) return;
+    elements.adTagList.innerHTML = ads.length ? '' : '<div style="font-size:11px;color:#adb5bd;padding:10px;text-align:center;">감지된 태그가 없습니다.</div>';
     ads.forEach(ad => {
       const li = document.createElement('li');
       li.className = 'tag-item';
-      li.innerHTML = `
-        <span class="tag-type-icon tag-type-${ad.type}"></span>
-        <span class="tag-label" title="${ad.label}">${ad.label}</span>
-      `;
-      li.addEventListener('click', () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, { 
-              type: 'SCROLL_TO_AD', 
-              adId: ad.id 
-            }).catch(err => {
-              console.error('Failed to send scroll message:', err);
-            });
-          }
-        });
-      });
-      list.appendChild(li);
+      li.innerHTML = `<span class="tag-type-icon tag-type-${ad.type}"></span><span class="tag-label" title="${ad.label}">${ad.label}</span>`;
+      li.onclick = () => sendMessageToActiveTab({ type: 'SCROLL_TO_AD', adId: ad.id });
+      elements.adTagList.appendChild(li);
     });
   }
 
-  // Handle toggle change
-  toggle.addEventListener('change', () => {
-    setInspectorActive(toggle.checked);
-  });
-
-  function updateStatusUI(isActive) {
-    if (isActive) {
-      statusBadge.textContent = 'ON';
-      statusBadge.classList.add('active');
-    } else {
-      statusBadge.textContent = 'OFF';
-      statusBadge.classList.remove('active');
+  function updatePpomUI(links) {
+    if (elements.ppomLinkCount) elements.ppomLinkCount.textContent = links.length;
+    if (elements.ppomLinkList) {
+      elements.ppomLinkList.innerHTML = '';
+      if (links.length === 0 && elements.ppomEmptyState) elements.ppomEmptyState.style.display = 'block';
+      links.forEach(link => {
+        const li = document.createElement('li');
+        li.className = 'link-card';
+        li.innerHTML = `
+          <div class="link-header">
+            <span class="link-index">${link.index + 1}</span>
+            <span class="link-title">${link.text || '제목 없음'}</span>
+          </div>
+          <div class="link-url-container">
+            <a href="${link.decodedUrl}" target="_blank" class="link-url">${link.decodedUrl}</a>
+          </div>
+        `;
+        li.onmouseenter = () => sendMessageToActiveTab({ action: 'highlight_ppom_link', index: link.index });
+        li.onmouseleave = () => sendMessageToActiveTab({ action: 'remove_ppom_highlight', index: link.index });
+        elements.ppomLinkList.appendChild(li);
+      });
     }
   }
 
-  // Request stats once on sidepanel open
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
-      console.log('Requesting initial stats for tab:', tabs[0].id);
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_STATS' }).catch(err => {
-        console.log('Content script not ready or error:', err);
-      });
-    }
-  });
-
-  // Periodically request stats to keep list in sync
+  // Initial Sync
+  sync();
+  
+  // Periodic Stats
   setInterval(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && toggle.checked) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'REQUEST_STATS' }).catch(() => {});
-      }
-    });
+    if (elements.toggle && elements.toggle.checked) {
+      sendMessageToActiveTab({ type: 'REQUEST_STATS' });
+    }
   }, 2000);
 });

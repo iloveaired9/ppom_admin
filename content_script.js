@@ -95,6 +95,12 @@ style.innerHTML = `
     transition: all 0.3s ease;
     z-index: 10000;
   }
+  .ppom-link-highlight {
+    outline: 3px solid #f44336 !important;
+    background-color: #ffeb3b80 !important;
+    transition: all 0.3s ease;
+    z-index: 10000;
+  }
   @keyframes ppom-pulse {
     0% { transform: scale(1); outline-width: 3px; }
     50% { transform: scale(1.02); outline-width: 10px; outline-color: #fffa65 !important; }
@@ -135,6 +141,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ links: links });
   } else if (message.action === 'scroll_to_link') {
     scrollToLink(message.index);
+  } else if (message.action === 'request_ppom_links') {
+    const links = scanPpomppuLinks();
+    sendResponse({ links: links });
+  } else if (message.action === 'highlight_ppom_link') {
+    highlightPpomppuLink(message.index, true);
+  } else if (message.action === 'remove_ppom_highlight') {
+    highlightPpomppuLink(message.index, false);
   }
 });
 
@@ -341,10 +354,10 @@ function sendStats() {
 }
 
 // --- Abnormal Link Scanner Logic ---
-let foundLinks = [];
+let foundHttpLinks = [];
 
 function scanForHttpLinks() {
-  foundLinks = [];
+  foundHttpLinks = [];
   const anchors = document.querySelectorAll('a[href]');
   let logicalIndex = 0;
   
@@ -356,7 +369,7 @@ function scanForHttpLinks() {
                        (/^http:[^\/]/.test(trimmedHref) && !/^https:/.test(trimmedHref));
 
     if (isAbnormal) {
-      foundLinks.push({
+      foundHttpLinks.push({
         index: logicalIndex++,
         href: href,
         text: a.innerText.trim() || a.textContent.trim() || '(텍스트 없음)',
@@ -365,11 +378,11 @@ function scanForHttpLinks() {
     }
   });
   
-  return foundLinks.map(l => ({ index: l.index, href: l.href, text: l.text }));
+  return foundHttpLinks.map(l => ({ index: l.index, href: l.href, text: l.text }));
 }
 
 function scrollToLink(index) {
-  const linkObj = foundLinks[index];
+  const linkObj = foundHttpLinks[index];
   if (linkObj && linkObj.element) {
     const el = linkObj.element;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -377,6 +390,61 @@ function scrollToLink(index) {
     setTimeout(() => {
       el.classList.remove('http-link-highlight');
     }, 3000);
+  }
+}
+
+// --- Ppomppu Link Decoder Logic ---
+let detectedPpomLinks = [];
+
+function decodePpomUrl(url) {
+  try {
+    if (!url.includes('s.ppomppu.co.kr')) return null;
+    const urlParams = new URLSearchParams(url.split('?')[1]);
+    let target = urlParams.get('target');
+    const encode = urlParams.get('encode');
+
+    if (encode === 'on' && target) {
+      target = target.replace(/ /g, '+');
+      let decodedUrl = atob(target);
+      decodedUrl = decodedUrl.replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&nbsp;/g, ' ');
+      return decodedUrl.trim();
+    }
+  } catch (e) { console.error('Decoding error:', e); }
+  return null;
+}
+
+function scanPpomppuLinks() {
+  const links = document.querySelectorAll('a[href*="s.ppomppu.co.kr"]');
+  detectedPpomLinks = [];
+  links.forEach((link, index) => {
+    const decodedUrl = decodePpomUrl(link.href);
+    if (decodedUrl) {
+      link.dataset.ppomIndex = index;
+      detectedPpomLinks.push({
+        index: index,
+        text: link.textContent.trim() || '(텍스트 없음)',
+        originalUrl: link.href,
+        decodedUrl: decodedUrl
+      });
+    }
+  });
+  return detectedPpomLinks;
+}
+
+function highlightPpomppuLink(index, isHighlight) {
+  const link = document.querySelector(`a[data-ppom-index="${index}"]`);
+  if (link) {
+    if (isHighlight) {
+      link.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      link.classList.add('ppom-link-highlight');
+    } else {
+      link.classList.remove('ppom-link-highlight');
+    }
   }
 }
 
@@ -399,6 +467,9 @@ function throttledScan() {
         chrome.runtime.sendMessage({ action: 'links_detected', links: links }).catch(() => {});
       }
     });
+    // 3. Scan for Ppomppu Links (always scan or handle via sidepanel)
+    const ppomLinks = scanPpomppuLinks();
+    chrome.runtime.sendMessage({ action: 'ppom_links_detected', links: ppomLinks }).catch(() => {});
   }, 500);
 }
 

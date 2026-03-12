@@ -10,10 +10,7 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onDisconnect.addListener(() => {
       console.log('Side panel closed, turning off inspector');
       
-      // 1. Reset storage
-      chrome.storage.local.set({ inspectorActive: false });
-      
-      // 2. Notify all Ppomppu tabs to clear highlights
+      // 1. Notify all Ppomppu tabs to clear highlights
       chrome.tabs.query({ url: "*://*.ppomppu.co.kr/*" }, (tabs) => {
         tabs.forEach(tab => {
           chrome.tabs.sendMessage(tab.id, { 
