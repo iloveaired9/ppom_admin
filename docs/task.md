@@ -1,0 +1,7 @@
+- [x] Improve scan status visibility <!-- id: 25 -->
+- [x] Enhance 'Ppom Link' tab functionality <!-- id: 27 -->
+- [x] Fix Ppom Link detection issues <!-- id: 31 -->
+- [x] Add toggle for Debug Console <!-- id: 37 -->
+    - [x] Add toggle UI to `sidepanel.html` <!-- id: 38 -->
+    - [x] Handle toggle logic in `sidepanel.js` <!-- id: 39 -->
+- [x] Final verification <!-- id: 17 -->

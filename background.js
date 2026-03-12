@@ -10,13 +10,15 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onDisconnect.addListener(() => {
       console.log('Side panel closed, turning off inspector');
       
-      // 1. Notify all Ppomppu tabs to clear highlights
+      // 1. Update storage state
+      chrome.storage.local.set({ inspectorActive: false });
+
+      // 2. Notify all Ppomppu tabs to clear highlights
       chrome.tabs.query({ url: "*://*.ppomppu.co.kr/*" }, (tabs) => {
         tabs.forEach(tab => {
           chrome.tabs.sendMessage(tab.id, { 
-            type: 'TOGGLE_INSPECTOR', 
-            active: false 
-          }).catch(() => {}); // Ignore tabs where content script isn't loaded
+            type: 'CLEAR_ALL_HIGHLIGHTS'
+          }).catch(() => {});
         });
       });
     });

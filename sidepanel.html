@@ -190,6 +190,22 @@
       white-space: nowrap;
       color: #495057;
     }
+    .tag-label-container {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+      overflow: hidden;
+    }
+    .fallback-badge {
+      font-size: 10px;
+      color: #6c757d;
+      background: #f1f3f5;
+      padding: 1px 6px;
+      border-radius: 4px;
+      width: fit-content;
+      margin-top: 2px;
+      font-weight: normal;
+    }
     
     /* Ppom Link Card Styles */
     .link-card {
@@ -309,7 +325,7 @@
 </head>
 <body>
   <div class="header">
-    <span class="title">Ppomppu Ad Admin</span>
+    <span class="title">PPomppu Admin</span>
     <span id="statusBadge" class="status-badge">...</span>
   </div>
 
@@ -394,6 +410,48 @@
       * 리스트 항목을 클릭하면 해당 위치로 페이지가 스크롤됩니다.
     </div>
   </div>
+  
+  <!-- Ppom Link Tab Content -->
+  <div id="tab-ppom" class="tab-content">
+    <div class="info-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span style="font-size: 14px; font-weight: bold; color: #343a40;">뽐링크 디코더</span>
+        <button id="refreshPpomBtn" style="padding: 6px 12px; font-size: 12px; background: #2db400; color: white; border: none; border-radius: 4px; cursor: pointer;">새로고침</button>
+      </div>
+      <ul class="info-list">
+        <li><span class="label">감지된 뽐링크 수</span> <span id="ppomLinkCount" class="count" style="color: #2db400;">0</span></li>
+      </ul>
+    </div>
+
+    <div id="ppomLinkListBox" style="margin-top: 20px;">
+      <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #495057;">뽐링크 리스트 (복사/열기)</div>
+      <ul id="ppomLinkList" class="tag-list" style="padding: 0; margin: 0;">
+        <!-- Ppom link items will be injected here -->
+      </ul>
+    </div>
+
+    <div id="ppomEmptyState" style="text-align: center; padding: 20px; color: #adb5bd; font-size: 13px; display: none;">
+      감지된 뽐링크가 없습니다.
+    </div>
+
+    <!-- Debug Log Area -->
+    <div id="ppomDebugConsole" style="margin-top: 20px; padding: 10px; background: #f1f3f5; border-radius: 6px; font-family: monospace; font-size: 11px; color: #495057; border: 1px solid #dee2e6;">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-weight: bold; margin-bottom: 5px; color: #868e96; border-bottom: 1px solid #dee2e6; padding-bottom: 3px;">
+        <span>DEBUG CONSOLE</span>
+        <button id="toggleDebugBtn" style="background: none; border: none; font-size: 10px; color: #4285f4; cursor: pointer; text-decoration: underline;">접기</button>
+      </div>
+      <div id="debugLogContainer" style="max-height: 150px; overflow-y: auto;">
+        <div id="ppomDebugLogs">
+          <div>[System] Initializing...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">
+      * `s.ppomppu.co.kr` 형태의 링크를 자동으로 찾아 디코딩합니다.<br>
+      * 리스트 항목에 마우스를 올리면 본문의 링크가 하이라이트됩니다.
+    </div>
+  </div>
 
   <!-- Other Tab Content -->
   <div id="tab-other" class="tab-content">
@@ -421,9 +479,9 @@
     <div class="info-card" style="margin-top: 20px;">
       <div style="font-size: 13px; font-weight: bold; color: #495057; margin-bottom: 10px;">익스텐션 정보</div>
       <div style="font-size: 12px; color: #6c757d; line-height: 1.6;">
-        <b>버전:</b> 1.1.0<br>
+        <b>버전:</b> 1.0.0<br>
         <b>개발자:</b> iloveaired<br>
-        <b>업데이트:</b> Kakao, Naver, Way2G, HTTP Link 통합 버전
+        <b>업데이트:</b> 대체 광고 탐지 및 v1.0.0 통합본
       </div>
     </div>
   </div>

@@ -148,8 +148,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     highlightPpomppuLink(message.index, true);
   } else if (message.action === 'remove_ppom_highlight') {
     highlightPpomppuLink(message.index, false);
+  } else if (message.type === 'CLEAR_ALL_HIGHLIGHTS') {
+    inspectorActive = false;
+    clearHighlights();
+    clearHttpLinkHighlights();
+    clearPpomLinkHighlights();
+  } else if (message.action === 'clear_link_highlights') {
+    clearHttpLinkHighlights();
+  } else if (message.action === 'clear_ppom_highlights') {
+    clearPpomLinkHighlights();
   }
 });
+
+function clearHttpLinkHighlights() {
+  document.querySelectorAll('.http-link-highlight').forEach(el => {
+    el.classList.remove('http-link-highlight');
+  });
+}
+
+function clearPpomLinkHighlights() {
+  document.querySelectorAll('.ppom-link-highlight').forEach(el => {
+    el.classList.remove('ppom-link-highlight');
+  });
+}
 
 function scanAndHighlight() {
   if (!inspectorActive) return;
@@ -273,7 +294,13 @@ function extractTagName(el, type) {
   }
 
   const fallbackName = type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
-  const baseName = name || fallbackName;
+  let baseName = name || fallbackName;
+
+  // Add Fallback Ad Information
+  const fallbackInfo = getFallbackInfo(el.id || gptSlot || "");
+  if (fallbackInfo) {
+    baseName += ` [대체: ${fallbackInfo}]`;
+  }
 
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
@@ -281,6 +308,21 @@ function extractTagName(el, type) {
   }
 
   return baseName;
+}
+
+const FALLBACK_CONFIG_MAPPING = {
+  'list_f': '728x90 (Iframe)',
+  'list2_f': '728x90 (Iframe)',
+  'view_f': '728x90 (Iframe)',
+  'view_bottom_f': '728x90 (Iframe)',
+  'main_f': '300x250 (Kakao)',
+  'r_banner_f': 'w2g-slot6 (WTG)'
+};
+
+function getFallbackInfo(slotId) {
+  if (!slotId) return null;
+  const matchedKey = Object.keys(FALLBACK_CONFIG_MAPPING).find(key => slotId.includes(key));
+  return matchedKey ? FALLBACK_CONFIG_MAPPING[matchedKey] : null;
 }
 
 function findGoogleDefinedSizes(el) {
@@ -398,12 +440,17 @@ let detectedPpomLinks = [];
 
 function decodePpomUrl(url) {
   try {
-    if (!url.includes('s.ppomppu.co.kr')) return null;
-    const urlParams = new URLSearchParams(url.split('?')[1]);
+    if (!url || !url.includes('s.ppomppu.co.kr')) return null;
+    const queryString = url.split('?')[1];
+    if (!queryString) return null;
+    
+    const urlParams = new URLSearchParams(queryString);
     let target = urlParams.get('target');
     const encode = urlParams.get('encode');
 
-    if (encode === 'on' && target) {
+    if (!target) return null;
+
+    if (encode === 'on') {
       target = target.replace(/ /g, '+');
       let decodedUrl = atob(target);
       decodedUrl = decodedUrl.replace(/&amp;/g, '&')
@@ -413,6 +460,9 @@ function decodePpomUrl(url) {
         .replace(/&#039;/g, "'")
         .replace(/&nbsp;/g, ' ');
       return decodedUrl.trim();
+    } else {
+      // If not encoded, it might be a plain URL in target
+      return target.trim();
     }
   } catch (e) { console.error('Decoding error:', e); }
   return null;
@@ -433,6 +483,7 @@ function scanPpomppuLinks() {
       });
     }
   });
+  console.log(`[PPomppu Admin] Detected ${detectedPpomLinks.length} Ppomppu links.`);
   return detectedPpomLinks;
 }
 
@@ -440,10 +491,15 @@ function highlightPpomppuLink(index, isHighlight) {
   const link = document.querySelector(`a[data-ppom-index="${index}"]`);
   if (link) {
     if (isHighlight) {
+      link.dataset.originalBg = link.style.backgroundColor;
+      link.dataset.originalOutline = link.style.outline;
+      link.style.backgroundColor = '#ffeb3b80';
+      link.style.outline = '2px solid #f44336';
+      link.style.borderRadius = '2px';
       link.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      link.classList.add('ppom-link-highlight');
     } else {
-      link.classList.remove('ppom-link-highlight');
+      link.style.backgroundColor = link.dataset.originalBg || '';
+      link.style.outline = link.dataset.originalOutline || '';
     }
   }
 }

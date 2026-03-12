@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Ppomppu Ad Admin",
+  "name": "PPomppu Admin",
   "version": "1.0.0",
   "description": "뽐뿌 광고 위치 및 태그 정보를 확인하는 관리 도구 (사이드바 버전)",
   "permissions": [
@@ -14,7 +14,7 @@
     "*://*.ppomppu.co.kr/*"
   ],
   "action": {
-    "default_title": "Ppomppu Ad Admin"
+    "default_title": "PPomppu Admin"
   },
   "side_panel": {
     "default_path": "sidepanel.html"
