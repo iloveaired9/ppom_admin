@@ -407,7 +407,8 @@ function scanForHttpLinks() {
     const href = a.getAttribute('href') || '';
     const trimmedHref = href.trim();
     
-    const isAbnormal = /^http:\/\//.test(trimmedHref) || 
+    const isAbnormal = /^\s/.test(href) || 
+                       /^http:\/\//.test(trimmedHref) || 
                        (/^http:[^\/]/.test(trimmedHref) && !/^https:/.test(trimmedHref));
 
     if (isAbnormal) {
