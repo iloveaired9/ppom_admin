@@ -15,10 +15,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     tabContents: document.querySelectorAll('.tab-content'),
     defaultTabSelect: document.getElementById('defaultTabSelect'),
     adTagList: document.getElementById('adTagList'),
-    linkCount: document.getElementById('linkCount'),
     linkList: document.getElementById('linkList'),
+    normalLinkList: document.getElementById('normalLinkList'),
     linkListBox: document.getElementById('linkListBox'),
     linkEmptyState: document.getElementById('linkEmptyState'),
+    linkCount: document.getElementById('linkCount'),
+    normalLinkCount: document.getElementById('normalLinkCount'),
     linkScanningState: document.getElementById('linkScanningState'),
     scanLinksBtn: document.getElementById('scanLinksBtn'),
     autoScanLinksToggle: document.getElementById('autoScanLinksToggle'),
@@ -233,38 +235,67 @@ document.addEventListener('DOMContentLoaded', async () => {
   let lastScanStart = 0;
 
   function requestLinkScan() {
-    lastScanStart = Date.now();
     if (elements.linkScanningState) elements.linkScanningState.style.display = 'flex';
-    if (elements.linkListBox) elements.linkListBox.style.display = 'none';
     if (elements.linkEmptyState) elements.linkEmptyState.style.display = 'none';
+    if (elements.linkListBox) elements.linkListBox.style.display = 'none';
+    
+    lastScanStart = Date.now();
     
     sendMessageToActiveTab({ action: 'scan_links' }).then(res => {
       const delay = Math.max(0, MIN_SCAN_TIME - (Date.now() - lastScanStart));
       setTimeout(() => {
-        updateLinkUI(res?.links || []);
+        updateLinkUI(res || { abnormal: [], normal: [] });
       }, delay);
     });
   }
 
-  function updateLinkUI(links) {
+  function updateLinkUI(data) {
+    const abnormalLinks = data.abnormal || [];
+    const normalLinks = data.normal || [];
+    
     if (elements.linkScanningState) elements.linkScanningState.style.display = 'none';
-    if (elements.linkCount) elements.linkCount.textContent = links.length;
-    if (elements.linkList) {
-      elements.linkList.innerHTML = '';
-      if (links.length > 0) {
-        if (elements.linkListBox) elements.linkListBox.style.display = 'block';
-        links.forEach(l => {
-          const li = document.createElement('li');
-          li.className = 'tag-item';
-          li.style.cursor = 'pointer';
-          li.innerHTML = `<span class="tag-type-icon" style="background:#ff4757;"></span><span class="tag-label">${l.text}</span>`;
-          li.onclick = () => sendMessageToActiveTab({ action: 'scroll_to_link', index: l.index });
-          elements.linkList.appendChild(li);
-        });
-      } else if (elements.linkEmptyState) {
-        elements.linkEmptyState.style.display = 'block';
-      }
+    if (elements.linkCount) elements.linkCount.textContent = abnormalLinks.length;
+    if (elements.normalLinkCount) elements.normalLinkCount.textContent = normalLinks.length;
+    
+    const totalCount = abnormalLinks.length + normalLinks.length;
+    
+    if (totalCount > 0) {
+      if (elements.linkListBox) elements.linkListBox.style.display = 'block';
+      if (elements.linkEmptyState) elements.linkEmptyState.style.display = 'none';
+      
+      // Render Abnormal Links
+      renderLinkList(elements.linkList, abnormalLinks, '#ff4757');
+      
+      // Render Normal Links
+      renderLinkList(elements.normalLinkList, normalLinks, '#4285f4');
+      
+    } else {
+      if (elements.linkListBox) elements.linkListBox.style.display = 'none';
+      if (elements.linkEmptyState) elements.linkEmptyState.style.display = 'block';
     }
+  }
+
+  function renderLinkList(container, links, color) {
+    if (!container) return;
+    container.innerHTML = '';
+    links.forEach(l => {
+      const li = document.createElement('li');
+      li.className = 'tag-item';
+      li.style.cursor = 'pointer';
+      li.style.flexDirection = 'column';
+      li.style.alignItems = 'flex-start';
+      li.style.padding = '8px';
+      
+      li.innerHTML = `
+        <div style="display: flex; align-items: center; width: 100%; margin-bottom: 3px;">
+          <span class="tag-type-icon" style="background:${color}; flex-shrink: 0;"></span>
+          <span class="tag-label" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${l.text}</span>
+        </div>
+        <div class="tag-url" style="font-size: 11px; color: #6c757d; width: 100%; word-break: break-all; padding-left: 17px;">${l.href}</div>
+      `;
+      li.onclick = () => sendMessageToActiveTab({ action: 'scroll_to_link', index: l.index });
+      container.appendChild(li);
+    });
   }
 
   // --- Event Bindings ---
@@ -299,10 +330,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (elements.otherAds) elements.otherAds.textContent = msg.other || 0;
       renderTagList(msg.ads || []);
     } else if (msg.action === 'links_detected') {
-      addDebugLog(`Links detected: ${msg.links?.length || 0}`);
+      addDebugLog(`Links detected: (Ab: ${msg.abnormal?.length || 0}, All: ${msg.normal?.length || 0})`);
       const delay = Math.max(0, MIN_SCAN_TIME - (Date.now() - lastScanStart));
       setTimeout(() => {
-        updateLinkUI(msg.links || []);
+        updateLinkUI(msg);
       }, delay);
     } else if (msg.action === 'ppom_links_detected') {
       addDebugLog(`Ppom links detected: ${msg.links?.length || 0}`);

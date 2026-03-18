@@ -117,6 +117,9 @@ chrome.storage.local.get(['inspectorActive'], (result) => {
   }
 });
 
+// 동적 설정 로드 시작
+initializeFallbackConfig();
+
 // Primary Message Listener
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'TOGGLE_INSPECTOR') {
@@ -137,8 +140,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       setTimeout(() => el.classList.remove('pulse'), 1000);
     }
   } else if (message.action === 'scan_links') {
-    const links = scanForHttpLinks();
-    sendResponse({ links: links });
+    const data = scanAllLinks();
+    sendResponse(data);
   } else if (message.action === 'scroll_to_link') {
     scrollToLink(message.index);
   } else if (message.action === 'request_ppom_links') {
@@ -310,7 +313,12 @@ function extractTagName(el, type) {
   return baseName;
 }
 
-const FALLBACK_CONFIG_MAPPING = {
+let FALLBACK_CONFIG_MAPPING = {
+  'm_view_f': 'w2g-slot3 (WTG)',
+  'm_main2_f': '320x100 (Kakao)',
+  'm_comment2_f': '320x100 (Iframe)',
+  'm_bottom': '300x250 (Kakao)',
+  'm_view_bottom_f': '300x250 (Iframe)',
   'list_f': '728x90 (Iframe)',
   'list2_f': '728x90 (Iframe)',
   'view_f': '728x90 (Iframe)',
@@ -318,6 +326,98 @@ const FALLBACK_CONFIG_MAPPING = {
   'main_f': '300x250 (Kakao)',
   'r_banner_f': 'w2g-slot6 (WTG)'
 };
+
+// [동적 로드] 페이지의 window에서 실시간 설정 추출
+function initializeFallbackConfig() {
+  // 페이지에서 slot_handler.js를 통해 로드된 설정 추출
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      // 옵션 1: AD_CONFIG.slotFallbackMap (새로운 형식)
+      if (window.AD_CONFIG && window.AD_CONFIG.slotFallbackMap && window.FALLBACK_CONFIG) {
+        const config = {
+          type: 'slotFallbackMap',
+          slotMap: window.AD_CONFIG.slotFallbackMap,
+          fallbackConfig: window.FALLBACK_CONFIG
+        };
+        window.postMessage({
+          type: 'PPOM_ADMIN_CONFIG',
+          data: config
+        }, '*');
+      }
+      // 옵션 2: displayFallbackAd의 fallbackSlots (운영 서버 레거시 형식)
+      else if (window.displayFallbackAd && window.FALLBACK_CONFIG) {
+        // 저장된 fallbackSlots를 추출 (대체 방법)
+        const config = {
+          type: 'fallbackSlots',
+          fallbackConfig: window.FALLBACK_CONFIG
+        };
+        window.postMessage({
+          type: 'PPOM_ADMIN_CONFIG',
+          data: config
+        }, '*');
+      }
+    })();
+  `;
+  document.documentElement.appendChild(script);
+  script.remove();
+}
+
+// 페이지에서 전송한 설정 수신
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  if (event.data.type === 'PPOM_ADMIN_CONFIG') {
+    const { type, slotMap, fallbackConfig } = event.data.data;
+
+    if (type === 'slotFallbackMap' && slotMap && fallbackConfig) {
+      // 새로운 형식: AD_CONFIG.slotFallbackMap 사용
+      FALLBACK_CONFIG_MAPPING = buildFallbackMapping(slotMap, fallbackConfig);
+      console.log('[PPomppu Admin] Fallback config updated (new format):', FALLBACK_CONFIG_MAPPING);
+    } else if (type === 'fallbackSlots' && fallbackConfig) {
+      // 레거시 형식: FALLBACK_CONFIG만 사용하여 기본 매핑 생성
+      FALLBACK_CONFIG_MAPPING = buildDefaultMapping(fallbackConfig);
+      console.log('[PPomppu Admin] Fallback config updated (legacy format):', FALLBACK_CONFIG_MAPPING);
+    }
+  }
+});
+
+// [유틸] 슬롯 매핑을 기반으로 대체 광고 정보 생성
+function buildFallbackMapping(slotMap, fallbackConfig) {
+  const mapping = {};
+
+  if (!slotMap || !fallbackConfig) return mapping;
+
+  Object.entries(slotMap).forEach(([slotId, [provider, identifier]]) => {
+    const providerConfig = fallbackConfig[provider];
+    if (!providerConfig) return;
+
+    const adData = providerConfig[identifier];
+    if (!adData) return;
+
+    const sizeInfo = adData.w && adData.h ? `${adData.w}x${adData.h}` : identifier;
+    const typeLabel = provider === 'WTG' ? 'WTG' :
+                     provider === 'KAKAO' ? 'Kakao' :
+                     provider === 'IFRAME' ? 'Iframe' : provider;
+
+    mapping[slotId] = `${sizeInfo} (${typeLabel})`;
+  });
+
+  return mapping;
+}
+
+// [유틸] 운영 서버 레거시 형식: 하드코딩된 기본 매핑 생성
+function buildDefaultMapping(fallbackConfig) {
+  // 운영 서버의 실제 슬롯 매핑 (WebFetch로 확인됨)
+  const defaultSlotMap = {
+    'm_view_f': ['WTG', 'w2g-slot3'],
+    'm_main2_f': ['KAKAO', '320x100'],
+    'm_comment2_f': ['IFRAME', '320x100'],
+    'm_bottom': ['KAKAO', '300x250'],
+    'm_view_bottom_f': ['IFRAME', '300x250']
+  };
+
+  return buildFallbackMapping(defaultSlotMap, fallbackConfig);
+}
 
 function getFallbackInfo(slotId) {
   if (!slotId) return null;
@@ -396,10 +496,11 @@ function sendStats() {
 }
 
 // --- Abnormal Link Scanner Logic ---
-let foundHttpLinks = [];
 
-function scanForHttpLinks() {
-  foundHttpLinks = [];
+let foundLinks = { abnormal: [], normal: [] };
+
+function scanAllLinks() {
+  foundLinks = { abnormal: [], normal: [] };
   const anchors = document.querySelectorAll('a[href]');
   let logicalIndex = 0;
   
@@ -407,25 +508,41 @@ function scanForHttpLinks() {
     const href = a.getAttribute('href') || '';
     const trimmedHref = href.trim();
     
+    // Permit absolute links (://) or protocol-relative/escaped absolute links (//, \/)
+    const isExternal = trimmedHref.includes('://') || trimmedHref.startsWith('//') || trimmedHref.startsWith('\\/');
+    const isInternal = trimmedHref.includes('ppomppu.co.kr');
+    
+    if (!isExternal || isInternal) return;
+
     const isAbnormal = /^\s/.test(href) || 
                        /^http:\/\//.test(trimmedHref) || 
                        (/^http:[^\/]/.test(trimmedHref) && !/^https:/.test(trimmedHref));
 
+    const linkData = {
+      index: logicalIndex++,
+      href: href,
+      text: a.innerText.trim() || a.textContent.trim() || '(텍스트 없음)',
+      element: a
+    };
+
     if (isAbnormal) {
-      foundHttpLinks.push({
-        index: logicalIndex++,
-        href: href,
-        text: a.innerText.trim() || a.textContent.trim() || '(텍스트 없음)',
-        element: a
-      });
+      foundLinks.abnormal.push(linkData);
+    } else {
+      foundLinks.normal.push(linkData);
     }
   });
   
-  return foundHttpLinks.map(l => ({ index: l.index, href: l.href, text: l.text }));
+  return {
+    abnormal: foundLinks.abnormal.map(l => ({ index: l.index, href: l.href, text: l.text })),
+    normal: foundLinks.normal.map(l => ({ index: l.index, href: l.href, text: l.text }))
+  };
 }
 
 function scrollToLink(index) {
-  const linkObj = foundHttpLinks[index];
+  // Search in both groups
+  const allLinks = [...foundLinks.abnormal, ...foundLinks.normal];
+  const linkObj = allLinks.find(l => l.index === index);
+  
   if (linkObj && linkObj.element) {
     const el = linkObj.element;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -520,8 +637,8 @@ function throttledScan() {
     // 2. Scan for Links (if auto-scan enabled)
     chrome.storage.local.get(['autoScanLinks'], (result) => {
       if (result.autoScanLinks) {
-        const links = scanForHttpLinks();
-        chrome.runtime.sendMessage({ action: 'links_detected', links: links }).catch(() => {});
+        const data = scanAllLinks();
+        chrome.runtime.sendMessage({ action: 'links_detected', ...data }).catch(() => {});
       }
     });
     // 3. Scan for Ppomppu Links (always scan or handle via sidepanel)

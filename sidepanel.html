@@ -385,7 +385,8 @@
         </label>
       </div>
       <ul class="info-list">
-        <li><span class="label">발견된 링크 수</span> <span id="linkCount" class="count red">0</span></li>
+        <li><span class="label">비정상 링크 수</span> <span id="linkCount" class="count red">0</span></li>
+        <li><span class="label">모든 외부 링크 수</span> <span id="normalLinkCount" class="count" style="color: #4285f4;">0</span></li>
       </ul>
     </div>
 
@@ -394,10 +395,15 @@
       스캔 중...
     </div>
 
-    <div id="linkListBox" style="margin-top: 20px; display: none;">
-      <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #495057;">비정상 링크 리스트 (클릭시 이동)</div>
-      <ul id="linkList" class="tag-list" style="padding: 0; margin: 0;">
-        <!-- Link items will be injected here -->
+    <div id="linkListBox" style="margin-top: 15px; display: none;">
+      <div style="font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #ff4757;">비정상 링크</div>
+      <ul id="linkList" class="tag-list" style="padding: 0; margin: 0; margin-bottom: 15px;">
+        <!-- Abnormal link items will be injected here -->
+      </ul>
+      
+      <div style="font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #4285f4;">모든 외부 링크</div>
+      <ul id="normalLinkList" class="tag-list" style="padding: 0; margin: 0;">
+        <!-- Normal link items will be injected here -->
       </ul>
     </div>
 
