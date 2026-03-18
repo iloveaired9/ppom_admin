@@ -307,10 +307,16 @@ function extractTagName(el, type) {
 
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
-    if (definedSizes) return `${baseName} [GPT: ${definedSizes}]`;
+    if (definedSizes) {
+      // 실제 렌더링 크기와 정의된 크기 구분 표시
+      const actualSize = `(렌더링: ${el.offsetWidth}x${el.offsetHeight})`;
+      return `${baseName} [GPT: ${definedSizes}] ${actualSize}`;
+    }
   }
 
-  return baseName;
+  // 광고가 아닌 요소는 실제 크기만 표시
+  const actualSize = `(${el.offsetWidth}x${el.offsetHeight})`;
+  return baseName.includes('(') ? baseName : `${baseName} ${actualSize}`;
 }
 
 let FALLBACK_CONFIG_MAPPING = {
