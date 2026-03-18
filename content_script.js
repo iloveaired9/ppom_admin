@@ -308,9 +308,16 @@ function extractTagName(el, type) {
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
     if (definedSizes) {
-      // 실제 렌더링 크기와 정의된 크기 구분 표시
-      const actualSize = `(렌더링: ${el.offsetWidth}x${el.offsetHeight})`;
-      return `${baseName} [GPT: ${definedSizes}] ${actualSize}`;
+      // GPT 정의 크기를 간결하게 변환 [[300,250],[320,150],[336,280]] → 300x250|320x150|336x280
+      const formattedSizes = definedSizes
+        .replace(/\[\s*/g, '').replace(/\s*\]/g, '') // 괄호 제거
+        .split(',').map((v, i, arr) => {
+          if (i % 2 === 0 && i + 1 < arr.length) return arr[i].trim() + 'x' + arr[i + 1].trim();
+          return null;
+        })
+        .filter(v => v).join('|');
+
+      return `${baseName} [정의: ${formattedSizes} → 실제: ${el.offsetWidth}x${el.offsetHeight}]`;
     }
   }
 
