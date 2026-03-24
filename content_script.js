@@ -42,23 +42,33 @@ style.innerHTML = `
     outline: 3px solid #ff4757 !important;
     outline-offset: -3px !important;
     transition: all 0.3s ease;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   }
-  .ppom-ad-highlight::after {
-    content: attr(data-ad-info);
+  .ppom-ad-label {
     position: absolute;
     top: 5px;
     left: 5px;
-    background: rgba(255, 71, 87, 0.9);
+    background: rgba(33, 37, 41, 0.9);
     color: white;
     font-size: 11px;
-    padding: 2px 8px;
-    z-index: 100000;
+    padding: 3px 10px;
+    z-index: 2147483647;
     pointer-events: none;
-    font-family: sans-serif;
-    font-weight: bold;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-weight: 500;
     white-space: nowrap;
     border-radius: 4px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .actual-replacement-text {
+    color: #ff4757;
+    font-weight: 800;
+    text-shadow: 0 0 2px rgba(255, 71, 87, 0.3);
   }
   .ppom-ad-google {
     outline-color: #4285f4 !important;
@@ -299,12 +309,29 @@ function extractTagName(el, type) {
   const fallbackName = type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
   let baseName = name || fallbackName;
 
+  // [추가] 미게재 상태 확인 (이벤트/로그로 감지된 경우)
+  const slotId = el.id || gptSlot || "unknown_slot";
+  const isEmptyConfirmed = emptySlots.has(slotId);
+
   // Add Fallback Ad Information
-  const fallbackInfo = getFallbackInfo(el.id || gptSlot || "");
-  if (fallbackInfo) {
-    baseName += ` [대체: ${fallbackInfo}]`;
+  const fallbackInfo = getFallbackInfo(slotId);
+  
+  let prefixHtml = "";
+  if (isEmptyConfirmed) {
+    prefixHtml = `[미게재 (Empty)] `;
   }
 
+  // [추가] 삽입된 대체 광고 세부 정보가 있으면 표시
+  const injectedInfo = injectedAds.get(slotId);
+  let replacementHtml = "";
+  if (injectedInfo) {
+    replacementHtml = ` [<span class="actual-replacement-text">실제 대체: ${injectedInfo}</span>]`;
+  } else if (fallbackInfo) {
+    replacementHtml = ` [대체: ${fallbackInfo}]`;
+  }
+
+  const fullLabelHtml = `${prefixHtml}${baseName}${replacementHtml}`;
+  
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
     if (definedSizes) {
@@ -317,13 +344,14 @@ function extractTagName(el, type) {
         })
         .filter(v => v).join('|');
 
-      return `${baseName} [정의: ${formattedSizes} → 실제: ${el.offsetWidth}x${el.offsetHeight}]`;
+      const fullLabelWithSizes = `${fullLabelHtml} [정의: ${formattedSizes} → 실제: ${el.offsetWidth}x${el.offsetHeight}]`;
+      return fullLabelWithSizes;
     }
   }
 
   // 광고가 아닌 요소는 실제 크기만 표시
   const actualSize = `(${el.offsetWidth}x${el.offsetHeight})`;
-  return baseName.includes('(') ? baseName : `${baseName} ${actualSize}`;
+  return fullLabelHtml.includes('(') ? fullLabelHtml : `${fullLabelHtml} ${actualSize}`;
 }
 
 let FALLBACK_CONFIG_MAPPING = {
@@ -340,40 +368,18 @@ let FALLBACK_CONFIG_MAPPING = {
   'r_banner_f': 'w2g-slot6 (WTG)'
 };
 
+// [추가] 슬롯 미게재 상태 저장
+const emptySlots = new Set();
+const injectedAds = new Map(); // [추가] 대체 광고 세부 정보 저장
+
 // [동적 로드] 페이지의 window에서 실시간 설정 추출
 function initializeFallbackConfig() {
-  // 페이지에서 slot_handler.js를 통해 로드된 설정 추출
   const script = document.createElement('script');
-  script.textContent = `
-    (function() {
-      // 옵션 1: AD_CONFIG.slotFallbackMap (새로운 형식)
-      if (window.AD_CONFIG && window.AD_CONFIG.slotFallbackMap && window.FALLBACK_CONFIG) {
-        const config = {
-          type: 'slotFallbackMap',
-          slotMap: window.AD_CONFIG.slotFallbackMap,
-          fallbackConfig: window.FALLBACK_CONFIG
-        };
-        window.postMessage({
-          type: 'PPOM_ADMIN_CONFIG',
-          data: config
-        }, '*');
-      }
-      // 옵션 2: displayFallbackAd의 fallbackSlots (운영 서버 레거시 형식)
-      else if (window.displayFallbackAd && window.FALLBACK_CONFIG) {
-        // 저장된 fallbackSlots를 추출 (대체 방법)
-        const config = {
-          type: 'fallbackSlots',
-          fallbackConfig: window.FALLBACK_CONFIG
-        };
-        window.postMessage({
-          type: 'PPOM_ADMIN_CONFIG',
-          data: config
-        }, '*');
-      }
-    })();
-  `;
-  document.documentElement.appendChild(script);
-  script.remove();
+  script.src = chrome.runtime.getURL('inject.js');
+  script.onload = function() {
+    this.remove();
+  };
+  (document.head || document.documentElement).appendChild(script);
 }
 
 // 페이지에서 전송한 설정 수신
@@ -390,6 +396,24 @@ window.addEventListener('message', (event) => {
       // 레거시 형식: FALLBACK_CONFIG만 사용하여 기본 매핑 생성
       FALLBACK_CONFIG_MAPPING = buildDefaultMapping(fallbackConfig);
       console.log('[PPomppu Admin] Fallback config updated (legacy format):', FALLBACK_CONFIG_MAPPING);
+    }
+  } else if (event.data.type === 'PPOM_ADMIN_SLOT_EMPTY') {
+    // [추가] 슬롯 미게재 감지 처리
+    const slotId = event.data.slotId;
+    if (slotId) {
+      emptySlots.add(slotId);
+      console.log(`[PPomppu Admin] Empty slot signal received: ${slotId}`);
+      throttledScan();
+    }
+  } else if (event.data.type === 'PPOM_ADMIN_AD_INJECTED') {
+    // [추가] 대체 광고 삽입 감지 처리
+    const { slotId, adDetail, adInfo } = event.data;
+    if (slotId && adDetail) {
+      injectedAds.set(slotId, adDetail);
+      console.log(`[PPomppu Admin] Injected ad info updated for: ${slotId}`);
+      throttledScan();
+    } else {
+      console.log(`%c[AD] 대체 광고 삽입됨: ${adInfo}`, "color: #a55eea; font-weight: bold;");
     }
   }
 });
@@ -426,10 +450,18 @@ function buildDefaultMapping(fallbackConfig) {
     'm_main2_f': ['KAKAO', '320x100'],
     'm_comment2_f': ['IFRAME', '320x100'],
     'm_bottom': ['KAKAO', '300x250'],
-    'm_view_bottom_f': ['IFRAME', '300x250']
+    'm_view_bottom_f': ['IFRAME', '300x250'],
+    'list2_f': ['IFRAME', '728x90'] // User mentioned list2_f_1
   };
 
   return buildFallbackMapping(defaultSlotMap, fallbackConfig);
+}
+
+function formatTimeMMSS() {
+  const now = new Date();
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `${mm}:${ss}`;
 }
 
 function getFallbackInfo(slotId) {
@@ -460,18 +492,27 @@ function parseDefineSlot(code, targetId) {
   return null;
 }
 
-function highlightElement(el, label, type, adId) {
+function highlightElement(el, labelHtml, type, adId) {
   el.classList.add('ppom-ad-highlight');
   el.setAttribute('data-ppom-ad-id', adId);
   el.classList.add(`ppom-ad-${type === 'way2g' ? 'way2g' : type}`);
-  el.setAttribute('data-ad-info', label);
+  
+  // Create or reuse label element
+  let labelEl = el.querySelector('.ppom-ad-label');
+  if (!labelEl) {
+    labelEl = document.createElement('div');
+    labelEl.className = 'ppom-ad-label';
+    el.appendChild(labelEl);
+  }
+  labelEl.innerHTML = labelHtml;
 }
 
 function clearHighlights() {
   document.querySelectorAll('.ppom-ad-highlight').forEach(el => {
     el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver', 'pulse');
-    el.removeAttribute('data-ad-info');
     el.removeAttribute('data-ppom-ad-id');
+    const label = el.querySelector('.ppom-ad-label');
+    if (label) label.remove();
   });
 }
 
@@ -489,9 +530,12 @@ function sendStats() {
     else if (el.classList.contains('ppom-ad-way2g')) type = 'way2g';
     else if (el.classList.contains('ppom-ad-naver')) type = 'naver';
 
+    const labelEl = el.querySelector('.ppom-ad-label');
+    const label = labelEl ? labelEl.textContent : '';
+
     adDetails.push({
       id: el.getAttribute('data-ppom-ad-id'),
-      label: el.getAttribute('data-ad-info'),
+      label: label,
       type: type
     });
   });

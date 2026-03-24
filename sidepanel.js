@@ -354,7 +354,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Split label if it contains fallback info for better styling
       let labelHtml = `<span class="tag-label" title="${ad.label}">${ad.label}</span>`;
-      if (ad.label.includes('[대체:')) {
+      
+      if (ad.label.includes('[실제 대체:')) {
+        li.classList.add('is-actual-replacement');
+        const parts = ad.label.split(' [실제 대체:');
+        const mainPart = parts[0];
+        const actualPart = parts[1].replace(']', '');
+        labelHtml = `
+          <div class="tag-label-container">
+            <span class="tag-label" title="${mainPart}">${mainPart}</span>
+            <span class="fallback-badge actual-replacement-badge">실제 대체: ${actualPart}</span>
+          </div>
+        `;
+      } else if (ad.label.includes('[대체:')) {
         const parts = ad.label.split(' [대체:');
         const mainPart = parts[0];
         const fallbackPart = parts[1].replace(']', '');
