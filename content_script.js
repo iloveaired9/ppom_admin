@@ -95,9 +95,6 @@ style.innerHTML = `
   .ppom-ad-naver::after {
     background: rgba(45, 180, 0, 0.9);
   }
-  .ppom-ad-highlight.pulse {
-    animation: ppom-pulse 1s ease-out;
-  }
   .http-link-highlight {
     outline: 3px solid #ff4757 !important;
     outline-offset: 2px !important;
@@ -111,10 +108,14 @@ style.innerHTML = `
     transition: all 0.3s ease;
     z-index: 10000;
   }
-  @keyframes ppom-pulse {
-    0% { transform: scale(1); outline-width: 3px; }
-    50% { transform: scale(1.02); outline-width: 10px; outline-color: #fffa65 !important; }
-    100% { transform: scale(1); outline-width: 3px; }
+  .pulse {
+    animation: ppom-pulse-active 0.5s ease-in-out 3;
+    z-index: 2147483647 !important;
+  }
+  @keyframes ppom-pulse-active {
+    0% { outline-width: 3px; outline-color: inherit; }
+    50% { outline-width: 10px; outline-color: #fffa65 !important; transform: scale(1.02); }
+    100% { outline-width: 3px; outline-color: inherit; }
   }
 `;
 document.head.appendChild(style);
@@ -147,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('pulse');
-      setTimeout(() => el.classList.remove('pulse'), 1000);
+      setTimeout(() => el.classList.remove('pulse'), 1500);
     }
   } else if (message.action === 'scan_links') {
     const data = scanAllLinks();
@@ -187,6 +188,11 @@ function clearPpomLinkHighlights() {
 
 function scanAndHighlight() {
   if (!inspectorActive) return;
+
+  // 1. Mark existing highlights as stale
+  document.querySelectorAll('.ppom-ad-highlight').forEach(el => {
+    el.setAttribute('data-ppom-stale', 'true');
+  });
 
   const allAdElements = [];
   const addTask = (el, type) => {
@@ -236,13 +242,23 @@ function scanAndHighlight() {
     }
   });
 
-  clearHighlights();
+  // 2. Update found roots and mark as active (remove stale tag)
   let count = 0;
   roots.forEach((info, el) => {
     const dimensions = `${el.offsetWidth}x${el.offsetHeight}`;
     const name = `${extractTagName(el, info.type)} (${dimensions})`;
-    const adId = `${info.type}-${count++}-${Date.now()}`;
+    const adId = `${info.type}-${count++}`;
     highlightElement(el, name, info.type, adId);
+    el.removeAttribute('data-ppom-stale');
+  });
+
+  // 3. Remove highlights that are still stale
+  document.querySelectorAll('.ppom-ad-highlight[data-ppom-stale="true"]').forEach(el => {
+    el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver');
+    el.removeAttribute('data-ppom-ad-id');
+    el.removeAttribute('data-ppom-stale');
+    const label = el.querySelector('.ppom-ad-label');
+    if (label) label.remove();
   });
 
   sendStats();
@@ -473,9 +489,28 @@ function parseDefineSlot(code, targetId) {
 }
 
 function highlightElement(el, labelHtml, type, adId) {
-  el.classList.add('ppom-ad-highlight');
-  el.setAttribute('data-ppom-ad-id', adId);
-  el.classList.add(`ppom-ad-${type === 'way2g' ? 'way2g' : type}`);
+  // Update classes only if needed
+  if (!el.classList.contains('ppom-ad-highlight')) {
+    el.classList.add('ppom-ad-highlight');
+  }
+  
+  const typeClass = `ppom-ad-${type === 'way2g' ? 'way2g' : type}`;
+  const currentAdId = el.getAttribute('data-ppom-ad-id');
+
+  // Maintain attributes
+  if (currentAdId !== adId) {
+    el.setAttribute('data-ppom-ad-id', adId);
+  }
+
+  // Handle type specific classes (remove old ones, add new one)
+  const providerClasses = ['ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver'];
+  providerClasses.forEach(cls => {
+    if (cls === typeClass) {
+      if (!el.classList.contains(cls)) el.classList.add(cls);
+    } else {
+      if (el.classList.contains(cls)) el.classList.remove(cls);
+    }
+  });
   
   // Create or reuse label element
   let labelEl = el.querySelector('.ppom-ad-label');
@@ -484,12 +519,16 @@ function highlightElement(el, labelHtml, type, adId) {
     labelEl.className = 'ppom-ad-label';
     el.appendChild(labelEl);
   }
-  labelEl.innerHTML = labelHtml;
+  
+  // CRITICAL: Update HTML only if content changed to prevent flicker
+  if (labelEl.innerHTML !== labelHtml) {
+    labelEl.innerHTML = labelHtml;
+  }
 }
 
 function clearHighlights() {
   document.querySelectorAll('.ppom-ad-highlight').forEach(el => {
-    el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver', 'pulse');
+    el.classList.remove('ppom-ad-highlight', 'ppom-ad-google', 'ppom-ad-kakao', 'ppom-ad-way2g', 'ppom-ad-naver');
     el.removeAttribute('data-ppom-ad-id');
     const label = el.querySelector('.ppom-ad-label');
     if (label) label.remove();
