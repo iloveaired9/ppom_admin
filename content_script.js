@@ -316,21 +316,15 @@ function extractTagName(el, type) {
   // Add Fallback Ad Information
   const fallbackInfo = getFallbackInfo(slotId);
   
-  let prefixHtml = "";
   if (isEmptyConfirmed) {
-    prefixHtml = `[미게재 (Empty)] `;
+    baseName = `[미게재 (Empty)] ${baseName}`;
+  }
+  
+  if (fallbackInfo) {
+    baseName += ` [대체: ${fallbackInfo}]`;
   }
 
-  // [추가] 삽입된 대체 광고 세부 정보가 있으면 표시
-  const injectedInfo = injectedAds.get(slotId);
-  let replacementHtml = "";
-  if (injectedInfo) {
-    replacementHtml = ` [<span class="actual-replacement-text">실제 대체: ${injectedInfo}</span>]`;
-  } else if (fallbackInfo) {
-    replacementHtml = ` [대체: ${fallbackInfo}]`;
-  }
-
-  const fullLabelHtml = `${prefixHtml}${baseName}${replacementHtml}`;
+  const fullLabelHtml = baseName;
   
   if (type === 'google' || type === 'way2g') {
     const definedSizes = findGoogleDefinedSizes(el);
@@ -370,7 +364,6 @@ let FALLBACK_CONFIG_MAPPING = {
 
 // [추가] 슬롯 미게재 상태 저장
 const emptySlots = new Set();
-const injectedAds = new Map(); // [추가] 대체 광고 세부 정보 저장
 
 // [동적 로드] 페이지의 window에서 실시간 설정 추출
 function initializeFallbackConfig() {
@@ -391,29 +384,16 @@ window.addEventListener('message', (event) => {
     if (type === 'slotFallbackMap' && slotMap && fallbackConfig) {
       // 새로운 형식: AD_CONFIG.slotFallbackMap 사용
       FALLBACK_CONFIG_MAPPING = buildFallbackMapping(slotMap, fallbackConfig);
-      console.log('[PPomppu Admin] Fallback config updated (new format):', FALLBACK_CONFIG_MAPPING);
     } else if (type === 'fallbackSlots' && fallbackConfig) {
       // 레거시 형식: FALLBACK_CONFIG만 사용하여 기본 매핑 생성
       FALLBACK_CONFIG_MAPPING = buildDefaultMapping(fallbackConfig);
-      console.log('[PPomppu Admin] Fallback config updated (legacy format):', FALLBACK_CONFIG_MAPPING);
     }
   } else if (event.data.type === 'PPOM_ADMIN_SLOT_EMPTY') {
     // [추가] 슬롯 미게재 감지 처리
     const slotId = event.data.slotId;
     if (slotId) {
       emptySlots.add(slotId);
-      console.log(`[PPomppu Admin] Empty slot signal received: ${slotId}`);
       throttledScan();
-    }
-  } else if (event.data.type === 'PPOM_ADMIN_AD_INJECTED') {
-    // [추가] 대체 광고 삽입 감지 처리
-    const { slotId, adDetail, adInfo } = event.data;
-    if (slotId && adDetail) {
-      injectedAds.set(slotId, adDetail);
-      console.log(`[PPomppu Admin] Injected ad info updated for: ${slotId}`);
-      throttledScan();
-    } else {
-      console.log(`%c[AD] 대체 광고 삽입됨: ${adInfo}`, "color: #a55eea; font-weight: bold;");
     }
   }
 });
@@ -639,7 +619,7 @@ function decodePpomUrl(url) {
       // If not encoded, it might be a plain URL in target
       return target.trim();
     }
-  } catch (e) { console.error('Decoding error:', e); }
+  } catch (e) {}
   return null;
 }
 
@@ -658,7 +638,6 @@ function scanPpomppuLinks() {
       });
     }
   });
-  console.log(`[PPomppu Admin] Detected ${detectedPpomLinks.length} Ppomppu links.`);
   return detectedPpomLinks;
 }
 

@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('Sidepanel loaded');
   
   // 1. DOM Elements
   const elements = {
@@ -40,7 +39,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       return tab;
     } catch (e) {
-      console.error('Failed to get active tab:', e);
       return null;
     }
   }
@@ -51,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       addDebugLog(`Sending message: ${message.action || message.type}`);
       return chrome.tabs.sendMessage(tab.id, message).catch(err => {
         addDebugLog(`<span style="color:#ff4757;">Error: ${err.message}</span>`);
-        console.warn('Message failed or content script not ready:', err);
       });
     } else {
       addDebugLog('<span style="color:#ff4757;">Error: No active tab found.</span>');
@@ -100,7 +97,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setInspectorActive(active) {
-    console.log('Setting inspector active:', active);
     chrome.storage.local.set({ inspectorActive: active }, () => {
       if (elements.toggle) elements.toggle.checked = active;
       updateStatusUI(active);
@@ -136,7 +132,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   async function handleTabChange(prevTab, target) {
-    console.log('Tab changed from', prevTab, 'to', target);
     
     // Cleanup previous tab features
     if (prevTab === 'tab-ads' && target !== 'tab-ads') {
@@ -186,13 +181,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       addDebugLog(`Sync: ${isPpom ? 'Ppomppu detected' : 'Other page'}`);
       
       if (!isPpom) {
-        console.log('Not a Ppomppu page');
         if (elements.toggle) elements.toggle.disabled = true;
         updateStatusUI(false, false);
         return;
       }
 
-      console.log('Ppomppu page detected');
       if (elements.toggle) elements.toggle.disabled = false;
 
       chrome.storage.local.get(['defaultTab', 'inspectorActive', 'autoScanLinks'], (res) => {
@@ -202,7 +195,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!window.hasInitialized) {
           window.hasInitialized = true;
           const startTab = res.defaultTab || 'tab-ads';
-          console.log('First init, switching to:', startTab);
           switchTab(startTab);
           if (startTab === 'tab-ads') {
             setInspectorActive(true);
@@ -210,7 +202,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
           // If already initialized but we switched BACK to a Ppomppu page
           if (activeTabId === 'tab-ads') {
-            console.log('Enforcing ON for Ads tab');
             setInspectorActive(true);
           }
         }
@@ -218,7 +209,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         sendMessageToActiveTab({ type: 'REQUEST_STATS' });
       });
     } catch (err) {
-      console.error('Sync failed:', err);
     } finally {
       isSyncing = false;
     }
@@ -354,19 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Split label if it contains fallback info for better styling
       let labelHtml = `<span class="tag-label" title="${ad.label}">${ad.label}</span>`;
-      
-      if (ad.label.includes('[실제 대체:')) {
-        li.classList.add('is-actual-replacement');
-        const parts = ad.label.split(' [실제 대체:');
-        const mainPart = parts[0];
-        const actualPart = parts[1].replace(']', '');
-        labelHtml = `
-          <div class="tag-label-container">
-            <span class="tag-label" title="${mainPart}">${mainPart}</span>
-            <span class="fallback-badge actual-replacement-badge">실제 대체: ${actualPart}</span>
-          </div>
-        `;
-      } else if (ad.label.includes('[대체:')) {
+      if (ad.label.includes('[대체:')) {
         const parts = ad.label.split(' [대체:');
         const mainPart = parts[0];
         const fallbackPart = parts[1].replace(']', '');
@@ -427,7 +405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               copyBtn.textContent = originalText;
               copyBtn.classList.remove('success');
             }, 1000);
-          } catch (err) { console.error('Copy failed:', err); }
+          } catch (err) {}
         };
 
         // Open button logic

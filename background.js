@@ -1,14 +1,12 @@
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.error(error));
+  .catch(() => {});
 
 // Detect side panel closure using port connection
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'sidepanel') {
-    console.log('Side panel connected');
     
     port.onDisconnect.addListener(() => {
-      console.log('Side panel closed, turning off inspector');
       
       // 1. Update storage state
       chrome.storage.local.set({ inspectorActive: false });

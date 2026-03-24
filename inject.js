@@ -24,7 +24,7 @@
   // 2. console.log 인터셉트
   const originalLog = window.console.log;
   window.console.log = function() {
-    originalLog.apply(window.console, arguments);
+    // Silent interception: Do not call originalLog.apply
     
     const args = Array.from(arguments);
     const msg = args.join(' ');
@@ -57,40 +57,6 @@
         postToContentScript('PPOM_ADMIN_SLOT_EMPTY', {
           slotId: slotId
         });
-      }
-    } else if (msg.includes('Ad Injected:')) {
-      // 1. 공급자(Provider) 추출 시도
-      let provider = '대체';
-      if (msg.includes('Kakao Ad')) provider = 'Kakao';
-      else if (msg.includes('WTG Ad')) provider = 'WTG';
-      else if (msg.includes('Google Ad')) provider = 'Google';
-      else if (msg.includes('string Ad')) provider = 'Iframe';
-
-      const parts = msg.split('Ad Injected:');
-      if (parts.length > 1) {
-        const info = parts[1].trim();
-        // ID[내용] 형태에서 ID와 내용 분리 시도
-        const idMatch = info.match(/^([^\[]+)\[(.+)\]/);
-        if (idMatch) {
-          const slotId = idMatch[1].trim();
-          const detail = idMatch[2].trim();
-          
-          // 핵심 정보만 추출 (예: iframe 크기 등)
-          let coreInfo = provider;
-          if (detail.includes('iframe') && detail.includes('320x100')) coreInfo += ' (320x100)';
-          else if (detail.includes('iframe') && detail.includes('300x250')) coreInfo += ' (300x250)';
-          else if (detail.includes('iframe') && detail.includes('728x90')) coreInfo += ' (728x90)';
-          
-          postToContentScript('PPOM_ADMIN_AD_INJECTED', {
-            slotId: slotId,
-            adDetail: coreInfo
-          });
-        } else {
-          postToContentScript('PPOM_ADMIN_AD_INJECTED', {
-            slotId: 'unknown',
-            adDetail: provider
-          });
-        }
       }
     }
   };
