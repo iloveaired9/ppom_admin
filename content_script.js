@@ -13,7 +13,8 @@ const googleAdSelectors = [
 
 const kakaoAdSelectors = [
   'iframe[src*="kakao_ad"]',
-  'iframe[src*=".ppomppu.co.kr/banner/kakao_ad"]'
+  'iframe[src*=".ppomppu.co.kr/banner/kakao_ad"]',
+  'ins.kakao_ad_area'
 ];
 
 const naverAdSelectors = [
@@ -304,11 +305,22 @@ function extractTagName(el, type) {
     if (nestedIns) name = `AdSense Slot: ${nestedIns.getAttribute('data-ad-slot')}`;
   }
 
-  if (!name && (type === 'kakao' || (el.tagName === 'IFRAME' && el.src.includes('kakao_ad')))) {
-    const src = el.src || '';
-    const match = src.match(/kakao_ad_(\d+x\d+)/);
-    const sizeStr = match ? ` ${match[1]}` : '';
-    name = `Kakao AdFit${sizeStr}`;
+  if (!name && (type === 'kakao' || (el.tagName === 'IFRAME' && (el.src || '').includes('kakao_ad')) || el.classList.contains('kakao_ad_area'))) {
+    const adUnit = el.getAttribute('data-ad-unit');
+    const adWidth = el.getAttribute('data-ad-width');
+    const adHeight = el.getAttribute('data-ad-height');
+    
+    let sizeStr = '';
+    if (adWidth && adHeight) {
+      sizeStr = ` ${adWidth}x${adHeight}`;
+    } else {
+      const src = el.src || '';
+      const match = src.match(/kakao_ad_(\d+x\d+)/);
+      sizeStr = match ? ` ${match[1]}` : '';
+    }
+
+    const unitStr = adUnit ? ` [Unit: ${adUnit}]` : '';
+    name = `Kakao AdFit${unitStr}${sizeStr}`;
   }
 
   if (!name && el.tagName === 'IFRAME' && el.src.includes('google_ad.html')) {

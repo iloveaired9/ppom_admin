@@ -7,7 +7,7 @@
 | 플랫폼 | 감지 조건 (Selectors/Patterns) | 하이라이트 색상 |
 | :--- | :--- | :--- |
 | **Google Ads** | GPT (`div[data-gpt-slot]`, `ins.adsbygoogle`), AdSense 등 | 파란색 (#4285f4) |
-| **Kakao AdFit** | `iframe[src*="kakao_ad"]`, `*.ppomppu.co.kr/banner/kakao_ad` | 노란색 (#ffcc00) |
+| **Kakao AdFit** | `iframe[src*="kakao_ad"]`, `*.ppomppu.co.kr/banner/kakao_ad`, `ins.kakao_ad_area` | 노란색 (#ffcc00) |
 | **Way2G** | GPT 패턴 `/26225854,65120695/PPomppu/ppomppu.co.kr/` 매칭 시 | 보라색 (#a55eea) |
 | **Naver Powerlink**| ID/Class에 `powerlink` 키워드 포함 요소 | 초록색 (#2db400) |
 | **Google Wrapper**| `iframe[src*="google_ad.html"]` | 파란색 (#4285f4) |
@@ -17,8 +17,9 @@
 
 ### 2.1. Kakao AdFit 사이즈 추출
 카카오 광고 iframe의 `src` 주소에서 정규식을 통해 사이즈 정보를 추출합니다.
-- **패턴**: `kakao_ad_(\d+x\d+)`
-- **결과**: `Kakao AdFit 320x100` 등
+- **패턴 1 (iframe)**: `kakao_ad_(\d+x\d+)`
+- **패턴 2 (ins)**: `data-ad-width` 및 `data-ad-height` 속성
+- **결과**: `Kakao AdFit [Unit: DAN-...] 300x250` 등
 
 ### 2.2. Way2G 분류 우선순위
 GPT(Google Publisher Tag)를 사용하더라도 특정 경로가 포함된 경우 Way2G로 우선 분류합니다.
