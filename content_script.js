@@ -1,5 +1,7 @@
 // Selector definitions
 const googleAdSelectors = [
+  '.JS-div_gpt_ad',
+  '.js-ad_slot',
   'ins.adsbygoogle',
   'iframe[id*="google_ads"]',
   'div[id*="google_ads"]',
@@ -12,6 +14,8 @@ const googleAdSelectors = [
 ];
 
 const kakaoAdSelectors = [
+  '.w2g-slot',
+  'div[data-slot^="w2g"]',
   'iframe[src*="kakao_ad"]',
   'iframe[src*=".ppomppu.co.kr/banner/kakao_ad"]',
   'ins.kakao_ad_area'
@@ -25,6 +29,9 @@ const naverAdSelectors = [
 ];
 
 const otherAdSelectors = [
+  '.floating-banner',
+  '.floating-banner-sm',
+  '.ad-banner',
   'div[id*="_f_"]',
   'div[class*="_f_"]',
   '.ad-container',
@@ -269,12 +276,25 @@ function extractTagName(el, type) {
   let name = "";
   const gptSlot = el.getAttribute('data-gpt-slot');
   const adClient = el.getAttribute('data-ad-client');
-  const way2gPattern = '/26225854,65120695/PPomppu/ppomppu.co.kr/';
+  const way2gPattern = '65120695'; // Ppomppu AdManager Account ID
 
-  if (gptSlot) {
-    if (gptSlot.includes(way2gPattern)) name = `Way2G (${gptSlot})`;
-    else name = gptSlot;
-  } else if (adClient) {
+  // 1. Way2Grow (w2g-slot) check
+  if (el.classList.contains('w2g-slot') || el.hasAttribute('data-slot') && el.getAttribute('data-slot').startsWith('w2g')) {
+    const slotId = el.getAttribute('data-slot') || el.id;
+    name = `Way2G (${slotId})`;
+    type = 'way2g';
+  }
+
+  if (!name && gptSlot) {
+    if (gptSlot.includes(way2gPattern)) {
+      // Extract specific slot name from path like /65120695/main_f
+      const slotParts = gptSlot.split('/');
+      const slotName = slotParts[slotParts.length - 1];
+      name = `Google GPT: ${slotName}`;
+    } else {
+      name = gptSlot;
+    }
+  } else if (!name && adClient) {
     name = `AdSense (${adClient})`;
   }
 
@@ -284,9 +304,14 @@ function extractTagName(el, type) {
     } else if (el.id.includes('google_ads_iframe_/')) {
       const parts = el.id.split('google_ads_iframe_');
       if (parts.length > 1) {
-        const slotName = parts[1].replace(/_\d+$/, '');
-        if (slotName.includes(way2gPattern)) name = `Way2G (${slotName})`;
-        else name = slotName;
+        const fullPath = parts[1].replace(/_\d+$/, '');
+        if (fullPath.includes(way2gPattern)) {
+          const slotParts = fullPath.split('/');
+          const slotName = slotParts[slotParts.length - 1];
+          name = `Google GPT: ${slotName}`;
+        } else {
+          name = fullPath;
+        }
       }
     }
   }
@@ -295,8 +320,13 @@ function extractTagName(el, type) {
     const nestedGpt = el.querySelector('[data-gpt-slot]');
     if (nestedGpt) {
       const slot = nestedGpt.getAttribute('data-gpt-slot');
-      if (slot.includes(way2gPattern)) name = `Way2G (${slot})`;
-      else name = slot;
+      if (slot.includes(way2gPattern)) {
+        const slotParts = slot.split('/');
+        const slotName = slotParts[slotParts.length - 1];
+        name = `Google GPT: ${slotName}`;
+      } else {
+        name = slot;
+      }
     }
   }
 
@@ -334,6 +364,12 @@ function extractTagName(el, type) {
     name = 'Naver Powerlink';
   }
 
+  // Floating banner detection
+  if (!name && (el.classList.contains('floating-banner') || el.classList.contains('floating-banner-sm'))) {
+    name = `Floating Banner (${el.classList.contains('floating-banner-sm') ? 'Small' : 'Main'})`;
+    type = 'other';
+  }
+
   const fallbackName = type === 'google' ? `Google Ad (${el.offsetWidth}x${el.offsetHeight})` : `Ad Slot (${el.offsetWidth}x${el.offsetHeight})`;
   let baseName = name || fallbackName;
 
@@ -348,13 +384,26 @@ function extractTagName(el, type) {
     baseName = `[미게재 (Empty)] ${baseName}`;
   }
   
-  if (fallbackInfo) {
-    baseName += ` [대체: ${fallbackInfo}]`;
+  // Real-time detection of dynamic replacement
+  const isGoogleSlot = baseName.includes('Google') || baseName.includes('AdSense');
+  if (isGoogleSlot && !isEmptyConfirmed) {
+    const hasKakao = el.querySelector('.kakao_ad_area, iframe[src*="kakao_ad"], iframe[src*="banner/kakao"]');
+    const hasWay2G = el.querySelector('.w2g-slot') || (el.getAttribute('data-slot') || '').startsWith('w2g');
+
+    if (hasKakao && !baseName.includes('(Kakao)')) {
+      baseName += ' [실제: Kakao 대체됨]';
+    } else if (hasWay2G && !baseName.includes('(WTG)') && !baseName.includes('Way2G')) {
+      baseName += ' [실제: Way2G 대체됨]';
+    }
+  }
+
+  if (fallbackInfo && !baseName.includes('[실제:')) {
+    baseName += ` [설정대체: ${fallbackInfo}]`;
   }
 
   const fullLabelHtml = baseName;
   
-  if (type === 'google' || type === 'way2g') {
+  if (type === 'google' || type === 'way2g' || name.includes('Google GPT')) {
     const definedSizes = findGoogleDefinedSizes(el);
     if (definedSizes) {
       // GPT 정의 크기를 간결하게 변환 [[300,250],[320,150],[336,280]] → 300x250|320x150|336x280
